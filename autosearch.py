@@ -1,11 +1,10 @@
-# 8069679804:AAHZPe9ZFaSXf5_Hy19c3DISMD-kHV4Vunw
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import InlineQuery, InputTextMessageContent, InlineQueryResultArticle
 import asyncio
+from config_reader import config
 
-API_TOKEN = '8069679804:AAHZPe9ZFaSXf5_Hy19c3DISMD-kHV4Vunw'
+bot = Bot(token=config.bot_token.get_secret_value())
 
-bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
 items = {
