@@ -60,7 +60,7 @@ class Bones:
     async def handle_message(self, message: types.Message):
         if self.makingOrder:
             if self.cur_q == 0: # photo
-                self.get_photo(message)
+                await self.get_photo(message)
             else:
                 answer = message.text
                 await self.bot.delete_message(chat_id=self.tmp_q.chat.id, message_id=self.tmp_q.message_id)
