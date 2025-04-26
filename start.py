@@ -43,7 +43,7 @@ class Bones:
         await self.bot.answer_callback_query(callback_query.id)
         if button_clicked == "makeOrder":
             await self.bot.delete_message(chat_id=self.tmp_q.chat.id, message_id=self.tmp_q.message_id)
-            await self.bot.send_message(chat_id=callback_query.message.chat.id, text="Fill out a form")
+            self.fill_form = await self.bot.send_message(chat_id=callback_query.message.chat.id, text="Fill out a form")
 
             self.tmp_q = await self.bot.send_message(chat_id=callback_query.message.chat.id, text=self.questions[0])
             self.makingOrder = True
@@ -54,33 +54,43 @@ class Bones:
     async def get_photo(self, message: types.Message):
         private_channel_id = '@lost_and_found_helper' 
         forwarded_message = await self.bot.forward_message(chat_id=private_channel_id, from_chat_id=message.chat.id, message_id=message.message_id)
-        
         file_id = forwarded_message.photo[-1].file_id
+        self.tmp_categories.append(file_id)
+        await self.bot.delete_message(chat_id=self.tmp_q.chat.id, message_id=self.tmp_q.message_id)
+        await self.bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+        self.cur_q += 1
+        self.tmp_q = await self.bot.send_message(chat_id=message.chat.id, text=self.questions[self.cur_q])
 
     async def handle_message(self, message: types.Message):
         if self.makingOrder:
             if self.cur_q == 0: # photo
                 await self.get_photo(message)
+            elif self.cur_q == 10:
+                await self.finish_makingOrder(message)
             else:
                 answer = message.text
+                self.tmp_categories.append(answer)
                 await self.bot.delete_message(chat_id=self.tmp_q.chat.id, message_id=self.tmp_q.message_id)
                 await self.bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
                 self.tmp_q = await self.bot.send_message(chat_id=message.chat.id, text=self.questions[self.cur_q])
                 self.tmp_categories.append(answer)
                 if self.cur_q == 6:
-                    self.cur_q = 10
-                    self.makingOrder = False
+                    self.cur_q = 9
             self.cur_q += 1
-        elif self.cur_q == 10:
-            self.cur_q = 0
-            answer = message.text
-            await self.bot.delete_message(chat_id=self.tmp_q.chat.id, message_id=self.tmp_q.message_id)
-            await self.bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
-            self.tmp_categories.append(answer)
-            print(self.tmp_categories)
-
-        if self.viewOrder:
+        elif self.viewOrder:
             ...
+
+    async def finish_makingOrder(self, message: types.Message):
+        self.makingOrder = False
+        self.cur_q = 0
+        answer = message.text
+        await self.bot.delete_message(chat_id=self.tmp_q.chat.id, message_id=self.tmp_q.message_id)
+        await self.bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+        self.tmp_categories.append(answer)
+        await self.bot.delete_message(chat_id=self.fill_form.chat.id, message_id=self.fill_form.message_id)
+        print(self.tmp_categories)
+
+        
 
 
     async def main(self):
