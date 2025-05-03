@@ -14,7 +14,7 @@ class Bones:
         self.viewOrder = False
         self.tmp_q = False
         self.cur_q = 0
-        self.questions = ["Photo", "Category", "Short description", "Brand", "Color", "Where?", "Comments"] # grab user id as well
+        self.questions = ["Photo", "Category", "Short description", "Brand", "Color", "Where", "Comments"] # grab user id as well
         self.tmp_categories = []
 
         self.dp.message.register(self.cmd_start, Command("start"))
@@ -73,7 +73,7 @@ class Bones:
                 await self.bot.delete_message(chat_id=self.tmp_q.chat.id, message_id=self.tmp_q.message_id)
                 await self.bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
                 self.tmp_q = await self.bot.send_message(chat_id=message.chat.id, text=self.questions[self.cur_q])
-                self.tmp_categories.append(answer)
+                
                 if self.cur_q == 6:
                     self.cur_q = 9
             self.cur_q += 1
@@ -88,8 +88,23 @@ class Bones:
         await self.bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
         self.tmp_categories.append(answer)
         await self.bot.delete_message(chat_id=self.fill_form.chat.id, message_id=self.fill_form.message_id)
-        print(self.tmp_categories)
+        self.submit = False
+        summ_t = str()
+        for i in range(1, len(self.questions)):
+            summ_t += f'{self.questions[i]}: {self.tmp_categories[i]}' + '\n'
+        
+        self.summ = await self.bot.send_photo(chat_id=self.fill_form.chat.id, photo=self.tmp_categories[0], caption=summ_t)
+            
 
+
+        
+
+    # async def submit_order(self):
+    #     summ_t = str()
+    #     for i in range(1, len(self.questions)):
+    #         summ_t += f'{self.questions[i]}: {self.tmp_categories[i]}' + '\n'
+        
+    #     self.summ = await self.bot.send_photo(chat_id=self.fill_form.chat.id, photo=self.tmp_categories[0], caption=summ_t)
         
 
 
