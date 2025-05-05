@@ -87,7 +87,15 @@ async def receive_photo(message: Message, state: FSMContext):
         return
 
     await state.update_data(photo=message.photo[-1].file_id)
-    await message.answer("Search for a category using @lexa_rubin_lev_miha_bot <category>")
+
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="🔍 Search Category",
+            switch_inline_query_current_chat=" "
+        )]
+    ])
+    await message.answer("Search for a category:", reply_markup=keyboard)
     await state.set_state(LostForm.category)
 
 
@@ -182,7 +190,13 @@ async def handle_edit(callback: CallbackQuery, state: FSMContext):
         await callback.message.answer("📸 Please send a new photo.")
         await state.set_state(EditingForm.photo)
     elif action == "category":
-        await callback.message.answer("Search for a category using @your_bot_username <category>")
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text="🔍 Search Category",
+                switch_inline_query_current_chat=" "
+            )]
+        ])
+        await callback.message.answer("Search for a category:", reply_markup=keyboard)
         await state.set_state(EditingForm.category)
     elif action == "location":
         await callback.message.answer("Where was it lost? (Type `-` to skip)")
@@ -260,4 +274,4 @@ async def main():
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    asyncio.run(main()) 
+    asyncio.run(main())
