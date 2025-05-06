@@ -1,4 +1,3 @@
-# start.py is terrible, had to restart again
 from aiogram import Bot, Dispatcher
 from aiogram.types import (
     Message,
@@ -22,10 +21,10 @@ from datetime import datetime
 from config_reader import config
 
 def init_db():
-    conn = sqlite3.connect("submitted_items.db")
+    conn = sqlite3.connect("found_items.db")
     cursor = conn.cursor()
     cursor.execute('''
-        CREATE TABLE IF NOT EXISTS submitted_items (
+        CREATE TABLE IF NOT EXISTS found_items (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             category TEXT NOT NULL,
             file_id TEXT NOT NULL,
@@ -386,9 +385,19 @@ async def confirm_submission(callback: CallbackQuery, state: FSMContext):
     )
 
     try:
-        await bot.send_photo(chat_id="@lost_and_found_helper", photo=data["photo"], caption=summary_for_lost)
+        sent_msg = await bot.send_photo(chat_id="@lost_and_found_helper", photo=data["photo"], caption=summary_for_lost)
         submit_msg = await callback.message.answer("✅ Form submitted and photo saved to the channel.")
         await state.update_data(submit_message=submit_msg.message_id)
+
+        conn = sqlite3.connect("found_items.db")
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO found_items (file_id, category, date)
+            VALUES (?, ?, ?)
+        ''', (sent_msg.photo[-1].file_id, data.get("category", "Unknown"), datetime.now().date()))
+        conn.commit()
+        conn.close()
+
     except Exception as e:
         error_msg = await callback.message.answer("⚠️ Failed to forward photo to the channel.")
         await state.update_data(submit_message=error_msg.message_id)
