@@ -64,8 +64,7 @@ CATEGORY_DESCRIPTIONS = {
     "other": ""
 }
 
-
-@dp.message(lambda message: message.text == "/lost")
+@dp.message(lambda message: message.text == "/found")
 async def cmd_lost(message: Message, state: FSMContext):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Make Order", callback_data="makeOrder")],
@@ -73,12 +72,11 @@ async def cmd_lost(message: Message, state: FSMContext):
     ])
     await message.answer("What do you want to do?", reply_markup=keyboard)
 
-
 @dp.callback_query(lambda c: c.data == "makeOrder")
 async def start_make_order(callback: CallbackQuery, state: FSMContext):
     await state.set_state(LostForm.photo)
     await callback.message.edit_text("📸 Please send a photo.")
-
+    await state.update_data(last_bot_message=callback.message.message_id)
 
 @dp.message(LostForm.photo)
 async def receive_photo(message: Message, state: FSMContext):
@@ -87,7 +85,19 @@ async def receive_photo(message: Message, state: FSMContext):
         return
 
     await state.update_data(photo=message.photo[-1].file_id)
+    data = await state.get_data()
 
+    last_msg_id = data.get('last_bot_message')
+    if last_msg_id:
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=last_msg_id)
+        except Exception:
+            pass
+
+    try:
+        await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+    except Exception:
+        pass
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
@@ -95,9 +105,9 @@ async def receive_photo(message: Message, state: FSMContext):
             switch_inline_query_current_chat=" "
         )]
     ])
-    await message.answer("Search for a category:", reply_markup=keyboard)
+    msg = await message.answer("Search for a category:", reply_markup=keyboard)
+    await state.update_data(last_bot_message=msg.message_id)
     await state.set_state(LostForm.category)
-
 
 @dp.inline_query()
 async def inline_query_handler(inline_query: InlineQuery):
@@ -120,7 +130,6 @@ async def inline_query_handler(inline_query: InlineQuery):
 
     await bot.answer_inline_query(inline_query.id, results, cache_time=1)
 
-
 @dp.message(LostForm.category, lambda m: m.text.startswith("SELECTED_CATEGORY:"))
 async def handle_category_selection(message: Message, state: FSMContext):
     raw = message.text.replace("SELECTED_CATEGORY:", "").strip()
@@ -128,10 +137,38 @@ async def handle_category_selection(message: Message, state: FSMContext):
 
     await state.update_data(category=category_name)
     data = await state.get_data()
-    await show_summary(message, data)
 
+    last_msg_id = data.get('last_bot_message')
+    if last_msg_id:
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=last_msg_id)
+        except Exception:
+            pass
 
-async def show_summary(message: Message, data: dict):
+    try:
+        await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+    except Exception:
+        pass
+
+    await show_summary(message, data, state)
+
+async def show_summary(message: Message, data: dict, state: FSMContext):
+    # Delete previous summary and buttons
+    summary_msg_id = data.get('summary_message')
+    buttons_msg_id = data.get('buttons_message')
+
+    if summary_msg_id:
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=summary_msg_id)
+        except Exception:
+            pass
+
+    if buttons_msg_id:
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=buttons_msg_id)
+        except Exception:
+            pass
+
     summary = (
         f"📄 <b>Review Your Form:</b>\n"
         f"<b>Category:</b> {data.get('category', '-')}\n"
@@ -165,29 +202,26 @@ async def show_summary(message: Message, data: dict):
 
     confirm_keyboard = InlineKeyboardMarkup(inline_keyboard=confirm_buttons)
 
-    try:
-        last_msg = await bot.get_messages(chat_id=message.chat.id, message_ids=message.message_id - 1)
-        if last_msg.text and "Review Your Form" in last_msg.text:
-            await last_msg.edit_text(summary, parse_mode=ParseMode.HTML)
-            await message.delete()
-            await message.answer("Is everything correct?", reply_markup=confirm_keyboard)
-            return
-    except Exception:
-        pass
-
+    new_summary_msg = None
     if data.get("photo"):
-        await message.answer_photo(photo=data["photo"], caption=summary, parse_mode=ParseMode.HTML)
+        new_summary_msg = await message.answer_photo(photo=data["photo"], caption=summary, parse_mode=ParseMode.HTML)
     else:
-        await message.answer(summary, parse_mode=ParseMode.HTML)
-    await message.answer("Is everything correct?", reply_markup=confirm_keyboard)
+        new_summary_msg = await message.answer(summary, parse_mode=ParseMode.HTML)
 
+    new_buttons_msg = await message.answer("Is everything correct?", reply_markup=confirm_keyboard)
+
+    await state.update_data(
+        summary_message=new_summary_msg.message_id,
+        buttons_message=new_buttons_msg.message_id
+    )
 
 @dp.callback_query(lambda c: c.data.startswith("edit_"))
 async def handle_edit(callback: CallbackQuery, state: FSMContext):
     action = callback.data.replace("edit_", "")
 
     if action == "photo":
-        await callback.message.answer("📸 Please send a new photo.")
+        msg = await callback.message.answer("📸 Please send a new photo.")
+        await state.update_data(last_bot_message=msg.message_id)
         await state.set_state(EditingForm.photo)
     elif action == "category":
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -196,18 +230,35 @@ async def handle_edit(callback: CallbackQuery, state: FSMContext):
                 switch_inline_query_current_chat=" "
             )]
         ])
-        await callback.message.answer("Search for a category:", reply_markup=keyboard)
+        msg = await callback.message.answer("Search for a category:", reply_markup=keyboard)
+        await state.update_data(last_bot_message=msg.message_id)
         await state.set_state(EditingForm.category)
     elif action == "location":
-        await callback.message.answer("Where was it lost? (Type `-` to skip)")
+        msg = await callback.message.answer("Where was it lost? (Type `-` to skip)")
+        await state.update_data(last_bot_message=msg.message_id)
         await state.set_state(EditingForm.location)
     elif action == "comments":
-        await callback.message.answer("Add or edit your comments: (Type `-` to skip)")
+        msg = await callback.message.answer("Add or edit your comments: (Type `-` to skip)")
+        await state.update_data(last_bot_message=msg.message_id)
         await state.set_state(EditingForm.comments)
 
+    data = await state.get_data()
+    summary_msg_id = data.get('summary_message')
+    buttons_msg_id = data.get('buttons_message')
+
+    if summary_msg_id:
+        try:
+            await bot.delete_message(chat_id=callback.message.chat.id, message_id=summary_msg_id)
+        except Exception:
+            pass
+
+    if buttons_msg_id:
+        try:
+            await bot.delete_message(chat_id=callback.message.chat.id, message_id=buttons_msg_id)
+        except Exception:
+            pass
+
     await callback.answer()
-
-
 
 @dp.message(EditingForm.photo)
 async def update_photo(message: Message, state: FSMContext):
@@ -217,7 +268,20 @@ async def update_photo(message: Message, state: FSMContext):
 
     await state.update_data(photo=message.photo[-1].file_id)
     data = await state.get_data()
-    await show_summary(message, data)
+
+    last_msg_id = data.get('last_bot_message')
+    if last_msg_id:
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=last_msg_id)
+        except Exception:
+            pass
+
+    try:
+        await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+    except Exception:
+        pass
+
+    await show_summary(message, data, state)
 
 @dp.message(EditingForm.category, lambda m: m.text.startswith("SELECTED_CATEGORY:"))
 async def update_category(message: Message, state: FSMContext):
@@ -225,7 +289,20 @@ async def update_category(message: Message, state: FSMContext):
     category_name = CATEGORIES.get(raw, "Unknown")
     await state.update_data(category=category_name)
     data = await state.get_data()
-    await show_summary(message, data)
+
+    last_msg_id = data.get('last_bot_message')
+    if last_msg_id:
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=last_msg_id)
+        except Exception:
+            pass
+
+    try:
+        await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+    except Exception:
+        pass
+
+    await show_summary(message, data, state)
 
 @dp.message(EditingForm.location)
 async def update_location(message: Message, state: FSMContext):
@@ -235,7 +312,20 @@ async def update_location(message: Message, state: FSMContext):
         await state.update_data(location=message.text)
 
     data = await state.get_data()
-    await show_summary(message, data)
+
+    last_msg_id = data.get('last_bot_message')
+    if last_msg_id:
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=last_msg_id)
+        except Exception:
+            pass
+
+    try:
+        await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+    except Exception:
+        pass
+
+    await show_summary(message, data, state)
 
 @dp.message(EditingForm.comments)
 async def update_comments(message: Message, state: FSMContext):
@@ -245,8 +335,20 @@ async def update_comments(message: Message, state: FSMContext):
         await state.update_data(comments=message.text)
 
     data = await state.get_data()
-    await show_summary(message, data)
 
+    last_msg_id = data.get('last_bot_message')
+    if last_msg_id:
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=last_msg_id)
+        except Exception:
+            pass
+
+    try:
+        await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+    except Exception:
+        pass
+
+    await show_summary(message, data, state)
 
 @dp.callback_query(lambda c: c.data == "confirm_submit")
 async def confirm_submission(callback: CallbackQuery, state: FSMContext):
@@ -261,14 +363,114 @@ async def confirm_submission(callback: CallbackQuery, state: FSMContext):
 
     try:
         await bot.send_photo(chat_id="@lost_and_found_helper", photo=data["photo"], caption=summary)
-        await callback.message.answer("✅ Form submitted and photo saved to the channel!")
+        submit_msg = await callback.message.answer("✅ Form submitted and photo saved to the channel.")
+        await state.update_data(submit_message=submit_msg.message_id)
     except Exception as e:
-        await callback.message.answer("⚠️ Failed to forward photo to the channel.")
+        error_msg = await callback.message.answer("⚠️ Failed to forward photo to the channel.")
+        await state.update_data(submit_message=error_msg.message_id)
         print(e)
+
+    # Clean up all tracked messages
+    for msg_key in ['summary_message', 'buttons_message', 'submit_message']:
+        msg_id = data.get(msg_key)
+        if msg_id:
+            try:
+                await bot.delete_message(chat_id=callback.message.chat.id, message_id=msg_id)
+            except Exception:
+                pass
 
     await state.clear()
     await callback.answer()
 
+@dp.message(EditingForm.photo)
+async def update_photo(message: Message, state: FSMContext):
+    if not message.photo:
+        await message.answer("Please send a valid photo.")
+        return
+
+    await state.update_data(photo=message.photo[-1].file_id)
+    data = await state.get_data()
+
+    last_msg_id = data.get('last_bot_message')
+    if last_msg_id:
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=last_msg_id)
+        except Exception:
+            pass
+
+    try:
+        await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+    except Exception:
+        pass
+
+    await show_summary(message, data, state)
+
+@dp.message(EditingForm.category, lambda m: m.text.startswith("SELECTED_CATEGORY:"))
+async def update_category(message: Message, state: FSMContext):
+    raw = message.text.replace("SELECTED_CATEGORY:", "").strip()
+    category_name = CATEGORIES.get(raw, "Unknown")
+    await state.update_data(category=category_name)
+    data = await state.get_data()
+
+    last_msg_id = data.get('last_bot_message')
+    if last_msg_id:
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=last_msg_id)
+        except Exception:
+            pass
+
+    try:
+        await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+    except Exception:
+        pass
+
+    await show_summary(message, data, state)
+
+@dp.message(EditingForm.location)
+async def update_location(message: Message, state: FSMContext):
+    if message.text.strip() == "-":
+        await message.answer("Skipped updating location.")
+    else:
+        await state.update_data(location=message.text)
+
+    data = await state.get_data()
+
+    last_msg_id = data.get('last_bot_message')
+    if last_msg_id:
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=last_msg_id)
+        except Exception:
+            pass
+
+    try:
+        await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+    except Exception:
+        pass
+
+    await show_summary(message, data, state)
+
+@dp.message(EditingForm.comments)
+async def update_comments(message: Message, state: FSMContext):
+    if message.text.strip() == "-":
+        await message.answer("Skipped updating comments.")
+    else:
+        await state.update_data(comments=message.text)
+
+    data = await state.get_data()
+
+    last_msg_id = data.get('last_bot_message')
+    if last_msg_id:
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=last_msg_id)
+        except Exception:
+            pass
+
+    try:
+        await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+    except Exception:
+        pass
+
+    await show_summary(message, data, state)
 
 async def main():
     await dp.start_polling(bot)
