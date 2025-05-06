@@ -15,7 +15,25 @@ from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
 import asyncio
 
+import sqlite3
+
+from datetime import datetime
+
 from config_reader import config
+
+def init_db():
+    conn = sqlite3.connect("submitted_items.db")
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS submitted_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            category TEXT NOT NULL,
+            file_id TEXT NOT NULL,
+            date DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    conn.commit()
+    conn.close()
 
 bot = Bot(token=config.bot_token.get_secret_value())
 dp = Dispatcher()
@@ -361,8 +379,14 @@ async def confirm_submission(callback: CallbackQuery, state: FSMContext):
         f"Comments: {data.get('comments', '-')}"
     )
 
+    summary_for_lost = (
+        f"Location: {data.get('location', '-')}\n"
+        f"Comments: {data.get('comments', '-')}\n"
+        f"Date: {datetime.now().date()}"
+    )
+
     try:
-        await bot.send_photo(chat_id="@lost_and_found_helper", photo=data["photo"], caption=summary)
+        await bot.send_photo(chat_id="@lost_and_found_helper", photo=data["photo"], caption=summary_for_lost)
         submit_msg = await callback.message.answer("✅ Form submitted and photo saved to the channel.")
         await state.update_data(submit_message=submit_msg.message_id)
     except Exception as e:
@@ -476,4 +500,5 @@ async def main():
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
+    init_db()
     asyncio.run(main())
