@@ -49,6 +49,7 @@ class EditingForm(StatesGroup):
     location = State()
     comments = State()
 
+
 CATEGORIES = {
     "pants": "👖 Штаны",
     "jackets": "🧥 Куртки",
@@ -83,11 +84,10 @@ CATEGORY_DESCRIPTIONS = {
 
 @dp.message(lambda message: message.text == "/found")
 async def cmd_lost(message: Message, state: FSMContext):
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Make Order", callback_data="makeOrder")],
-        [InlineKeyboardButton(text="View Orders", callback_data="viewOrder")]
-    ])
-    await message.answer("What do you want to do?", reply_markup=keyboard)
+    await state.set_state(LostForm.photo)
+    msg = await message.answer("📸 Please send a photo.")
+    await state.update_data(last_bot_message=msg.message_id)
+
 
 @dp.callback_query(lambda c: c.data == "makeOrder")
 async def start_make_order(callback: CallbackQuery, state: FSMContext):
