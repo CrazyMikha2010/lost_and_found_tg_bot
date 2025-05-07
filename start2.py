@@ -16,7 +16,7 @@ import asyncio
 
 import sqlite3
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from config_reader import config
 
@@ -37,6 +37,47 @@ def init_db():
 bot = Bot(token=config.bot_token.get_secret_value())
 dp = Dispatcher()
 
+
+#####################################
+#####################################
+def get_category_item_count(category_key):
+    try:
+        conn = sqlite3.connect("found_items.db")
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT COUNT(*) FROM found_items WHERE category = ?
+        ''', (category_key,))
+        count = cursor.fetchone()[0]
+        conn.close()
+        return count
+    except Exception as e:
+        print(f"Error getting category count: {e}")
+        return 0
+
+
+def get_file_ids_by_category_and_days(category, max_days_back):
+    try:
+        cutoff_date = (datetime.now() - timedelta(days=int(max_days_back))).date()
+        
+        conn = sqlite3.connect("found_items.db")
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT file_id 
+            FROM found_items
+            WHERE category = ?
+              AND DATE(date) >= DATE(?)
+            ORDER BY date DESC
+        ''', (category, str(cutoff_date)))
+        
+        file_ids = [row[0] for row in cursor.fetchall()]
+        conn.close()
+        return file_ids
+        
+    except Exception as e:
+        print(f"Error fetching filtered items: {e}")
+        return []
+
+
 class LostForm(StatesGroup):
     photo = State()
     category = State()
@@ -49,6 +90,9 @@ class EditingForm(StatesGroup):
     location = State()
     comments = State()
 
+class FilterForm(StatesGroup):
+    category = State()
+    days = State()
 
 CATEGORIES = {
     "pants": "👖 Штаны",
@@ -81,6 +125,117 @@ CATEGORY_DESCRIPTIONS = {
     "money_cards": "",
     "other": ""
 }
+
+
+@dp.inline_query()
+async def inline_query_handler(inline_query: InlineQuery):
+    query = inline_query.query.strip().lower()
+    results = []
+    
+    state: FSMContext = dp.fsm.get_context(bot, inline_query.from_user.id, inline_query.from_user.id)
+    current_state = await state.get_state()
+    
+    is_filter_context = current_state == "FilterForm:category"
+
+    for key, title in CATEGORIES.items():
+        if is_filter_context:
+            count = get_category_item_count(title)
+            if count == 0:
+                continue
+            result = InlineQueryResultArticle(
+                id=key,
+                title=title,
+                input_message_content=InputTextMessageContent(
+                    message_text=f"FILTER_CATEGORY:{key}"
+                ),
+                description=f"{count} items"
+            )
+        else:
+            description = CATEGORY_DESCRIPTIONS.get(key, "")
+            result = InlineQueryResultArticle(
+                id=key,
+                title=title,
+                input_message_content=InputTextMessageContent(
+                    message_text=f"SELECTED_CATEGORY:{key}"
+                ),
+                description=description
+            )
+        results.append(result)
+
+    await bot.answer_inline_query(inline_query.id, results, cache_time=1)
+
+@dp.message(lambda message: message.text == "/lost")
+async def cmd_filter(message: Message, state: FSMContext):
+    question_msg = await message.answer("🔍 Which category would you like to see?")
+    await state.update_data(category_question=question_msg.message_id)
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="🔍 Search Category",
+            switch_inline_query_current_chat=" "
+        )]
+    ])
+    search_msg = await message.answer("Search for a category:", reply_markup=keyboard)
+    await state.update_data(search_prompt_message=search_msg.message_id)
+    
+    await state.set_state(FilterForm.category)
+
+@dp.message(FilterForm.category, lambda m: m.text.startswith("FILTER_CATEGORY:"))
+async def handle_filter_category(message: Message, state: FSMContext):
+    raw = message.text.replace("FILTER_CATEGORY:", "").strip()
+    category_name = CATEGORIES.get(raw, "Unknown")
+
+    data = await state.get_data()
+    
+    for msg_key in ['category_question', 'search_prompt_message']:
+        msg_id = data.get(msg_key)
+        if msg_id:
+            try:
+                await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
+            except Exception:
+                pass
+
+    try:
+        await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+    except Exception:
+        pass
+
+    await state.update_data(filter_category=category_name)
+    days_msg = await message.answer("📅 How many days back would you like to search?")
+    await state.update_data(days_message=days_msg.message_id)
+    await state.set_state(FilterForm.days)  # 🔹 Add this line
+
+@dp.message(FilterForm.days)
+async def handle_filter_days(message: Message, state: FSMContext):
+    days = message.text.strip()
+    data = await state.get_data()
+
+    days_msg_id = data.get('days_message')
+    if days_msg_id:
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=days_msg_id)
+        except Exception:
+            pass
+    
+    try:
+        await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+    except Exception:
+        pass
+
+    category = data.get('filter_category', 'Unknown')
+
+    file_ids = get_file_ids_by_category_and_days(category, days)
+    print(f"Found {len(file_ids)} matching items:")
+    print(file_ids) 
+
+    if not file_ids:
+        await message.answer(f"No items found for {category} in the last {days} days.")
+    
+    await state.clear()
+####################################
+###################################
+
+
 
 @dp.message(lambda message: message.text == "/found")
 async def cmd_lost(message: Message, state: FSMContext):
