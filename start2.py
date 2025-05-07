@@ -203,7 +203,7 @@ async def handle_filter_category(message: Message, state: FSMContext):
     await state.update_data(filter_category=category_name)
     days_msg = await message.answer("📅 How many days back would you like to search?")
     await state.update_data(days_message=days_msg.message_id)
-    await state.set_state(FilterForm.days)  # 🔹 Add this line
+    await state.set_state(FilterForm.days)
 
 @dp.message(FilterForm.days)
 async def handle_filter_days(message: Message, state: FSMContext):
@@ -225,8 +225,8 @@ async def handle_filter_days(message: Message, state: FSMContext):
     category = data.get('filter_category', 'Unknown')
 
     file_ids = get_file_ids_by_category_and_days(category, days)
-    print(f"Found {len(file_ids)} matching items:")
-    print(file_ids) 
+    # print(f"Found {len(file_ids)} matching items:")
+    # print(file_ids) 
 
     if not file_ids:
         await message.answer(f"No items found for {category} in the last {days} days.")
@@ -325,7 +325,6 @@ async def handle_category_selection(message: Message, state: FSMContext):
     await show_summary(message, data, state)
 
 async def show_summary(message: Message, data: dict, state: FSMContext):
-    # Delete previous summary and buttons
     summary_msg_id = data.get('summary_message')
     buttons_msg_id = data.get('buttons_message')
 
@@ -558,7 +557,6 @@ async def confirm_submission(callback: CallbackQuery, state: FSMContext):
         await state.update_data(submit_message=error_msg.message_id)
         print(e)
 
-    # Clean up all tracked messages
     for msg_key in ['summary_message', 'buttons_message', 'submit_message']:
         msg_id = data.get(msg_key)
         if msg_id:
