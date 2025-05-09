@@ -20,60 +20,8 @@ from datetime import datetime, timedelta
 
 from config_reader import config
 
-def init_db():
-    conn = sqlite3.connect("found_items.db")
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS found_items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            category TEXT NOT NULL,
-            message_id TEXT NOT NULL,
-            date DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    conn.commit()
-    conn.close()
-
 bot = Bot(token=config.bot_token.get_secret_value())
 dp = Dispatcher()
-
-def get_category_item_count(category_key):
-    try:
-        conn = sqlite3.connect("found_items.db")
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT COUNT(*) FROM found_items WHERE category = ?
-        ''', (category_key,))
-        count = cursor.fetchone()[0]
-        conn.close()
-        return count
-    except Exception as e:
-        print(f"Error getting category count: {e}")
-        return 0
-
-
-def get_message_ids_by_category_and_days(category, max_days_back):
-    try:
-        cutoff_date = (datetime.now() - timedelta(days=int(max_days_back))).date()
-        
-        conn = sqlite3.connect("found_items.db")
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT message_id 
-            FROM found_items
-            WHERE category = ?
-              AND DATE(date) >= DATE(?)
-            ORDER BY date DESC
-        ''', (category, str(cutoff_date)))
-        
-        file_ids = [row[0] for row in cursor.fetchall()]
-        conn.close()
-        return file_ids
-        
-    except Exception as e:
-        print(f"Error fetching filtered items: {e}")
-        return []
-
 
 class LostForm(StatesGroup):
     photo = State()
@@ -126,7 +74,57 @@ CATEGORY_DESCRIPTIONS = {
     "other": ""
 }
 
+def init_db():
+    conn = sqlite3.connect("found_items.db")
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS found_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            category TEXT NOT NULL,
+            message_id TEXT NOT NULL,
+            date DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    conn.commit()
+    conn.close()
 
+def get_category_item_count(category_key):
+    try:
+        conn = sqlite3.connect("found_items.db")
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT COUNT(*) FROM found_items WHERE category = ?
+        ''', (category_key,))
+        count = cursor.fetchone()[0]
+        conn.close()
+        return count
+    except Exception as e:
+        print(f"Error getting category count: {e}")
+        return 0
+
+
+def get_message_ids_by_category_and_days(category, max_days_back):
+    try:
+        cutoff_date = (datetime.now() - timedelta(days=int(max_days_back))).date()
+        
+        conn = sqlite3.connect("found_items.db")
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT message_id 
+            FROM found_items
+            WHERE category = ?
+              AND DATE(date) >= DATE(?)
+            ORDER BY date DESC
+        ''', (category, str(cutoff_date)))
+        
+        file_ids = [row[0] for row in cursor.fetchall()]
+        conn.close()
+        return file_ids
+        
+    except Exception as e:
+        print(f"Error fetching filtered items: {e}")
+        return []
+        
 @dp.message(lambda message: message.text == "/lost")
 async def cmd_filter(message: Message, state: FSMContext):
     msg = await message.answer("🔍 Which category would you like to see?")
@@ -585,7 +583,6 @@ async def confirm_submission(callback: CallbackQuery, state: FSMContext):
 
     await state.clear()
     await callback.answer()
-
 
 async def main():
     await dp.start_polling(bot)
