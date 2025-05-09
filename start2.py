@@ -85,8 +85,214 @@ def init_db():
             date DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS user_subscriptions (
+            user_id INTEGER NOT NULL,
+            category TEXT NOT NULL,
+            PRIMARY KEY (user_id, category)
+        )
+    ''')
+
     conn.commit()
     conn.close()
+
+@dp.callback_query(lambda c: c.data.startswith("notif_delete_"))
+async def handle_notification_delete(callback: CallbackQuery):
+    msg_id = int(callback.data.split("_")[-1])
+    
+    try:
+        await bot.delete_message(callback.message.chat.id, msg_id)
+        await callback.message.delete()
+    except Exception as e:
+        print(f"Error deleting notification: {e}")
+    
+    await callback.answer("Notification deleted")
+
+async def delete_notification(chat_id, message_id):
+    await asyncio.sleep(30)
+    try:
+        await bot.delete_message(chat_id, message_id)
+    except Exception:
+        pass
+
+#################################################################
+##################  NOTIFICATIONS   #############################
+#################################################################
+
+class NotificationForm(StatesGroup):
+    action = State()
+    subscribe = State()
+    unsubscribe = State()
+
+@dp.message(lambda message: message.text == "/notification")
+async def cmd_notification(message: Message, state: FSMContext):
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔔 Subscribe", callback_data="notify_subscribe")],
+        [InlineKeyboardButton(text="🔕 Unsubscribe", callback_data="notify_unsubscribe")]
+    ])
+    await message.answer("What would you like to do?", reply_markup=keyboard)
+    await state.set_state(NotificationForm.action)
+
+@dp.callback_query(lambda c: c.data in ["notify_subscribe", "notify_unsubscribe"])
+async def handle_notification_action(callback: CallbackQuery, state: FSMContext):
+    action = callback.data.split("_")[1]
+    
+    if action == "subscribe":
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text="🔍 Search Category",
+                switch_inline_query_current_chat="NOTIFY_SUBSCRIBE: "
+            )]
+        ])
+        await callback.message.edit_text("Search for a category to subscribe:")
+        await callback.message.answer("Search for a category:", reply_markup=keyboard)
+        await state.set_state(NotificationForm.subscribe)
+    else:
+        conn = sqlite3.connect("found_items.db")
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT DISTINCT category FROM user_subscriptions
+            WHERE user_id = ?
+        ''', (callback.from_user.id,))
+        
+        subscriptions = [row[0] for row in cursor.fetchall()]
+        conn.close()
+        
+        if not subscriptions:
+            await callback.message.edit_text("You have no active subscriptions.")
+            await state.clear()
+            return
+        
+        buttons = []
+        for i in range(0, len(subscriptions), 2):
+            row = subscriptions[i:i+2]
+            buttons.append([
+                InlineKeyboardButton(
+                    text=f"❌ {CATEGORIES[cat]}",
+                    callback_data=f"unsub_{cat}"
+                ) for cat in row
+            ])
+        
+        buttons.append([
+            InlineKeyboardButton(
+                text="✅ Finish", 
+                callback_data="unsub_finish"
+            )
+        ])
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+        await callback.message.edit_text("Tap categories to unsubscribe:", reply_markup=keyboard)
+        await state.set_state(NotificationForm.unsubscribe)
+
+@dp.inline_query(lambda q: q.query.startswith("NOTIFY_SUBSCRIBE:"))
+async def inline_subscription_query(inline_query: InlineQuery):
+    query = inline_query.query.replace("NOTIFY_SUBSCRIBE:", "").strip().lower()
+    results = []
+    
+    for key, title in CATEGORIES.items():
+        if query in title.lower() or query in key.lower():
+            description = CATEGORY_DESCRIPTIONS.get(key, "")
+            results.append(InlineQueryResultArticle(
+                id=key,
+                title=title,
+                input_message_content=InputTextMessageContent(
+                    message_text=f"SELECTED_SUB:{key}"
+                ),
+                description=description
+            ))
+    
+    await bot.answer_inline_query(inline_query.id, results, cache_time=1)
+
+@dp.message(NotificationForm.subscribe, lambda m: m.text.startswith("SELECTED_SUB:"))
+async def handle_subscription_selection(message: Message, state: FSMContext):
+    raw = message.text.replace("SELECTED_SUB:", "").strip()
+    category = CATEGORIES.get(raw, None)
+    
+    if not category:
+        await message.answer("Invalid category selected")
+        return
+    
+    user_id = message.from_user.id
+    
+    try:
+        conn = sqlite3.connect("found_items.db")
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT OR IGNORE INTO user_subscriptions (user_id, category)
+            VALUES (?, ?)
+        ''', (user_id, raw))
+        conn.commit()
+        conn.close()
+        
+        await message.answer(f"✅ Subscribed to {category} notifications!")
+    except Exception as e:
+        await message.answer("❌ Failed to subscribe")
+        print(f"Subscription error: {e}")
+    
+    await state.clear()
+
+
+@dp.callback_query(lambda c: c.data.startswith("unsub_"))
+async def handle_unsubscribe(callback: CallbackQuery, state: FSMContext):
+    data = callback.data.split("_", 1)[1]
+    
+    if data == "finish":
+        await callback.message.delete()
+        await callback.message.answer("✅ Subscription settings updated")
+        await state.clear()
+        return
+    
+    category = data
+    user_id = callback.from_user.id
+    
+    try:
+        conn = sqlite3.connect("found_items.db")
+        cursor = conn.cursor()
+        cursor.execute('''
+            DELETE FROM user_subscriptions
+            WHERE user_id = ? AND category = ?
+        ''', (user_id, category))
+        conn.commit()
+        conn.close()
+        
+        conn = sqlite3.connect("found_items.db")
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT DISTINCT category FROM user_subscriptions
+            WHERE user_id = ?
+        ''', (user_id,))
+        
+        subscriptions = [row[0] for row in cursor.fetchall()]
+        conn.close()
+        
+        buttons = []
+        for i in range(0, len(subscriptions), 2):
+            row = subscriptions[i:i+2]
+            buttons.append([
+                InlineKeyboardButton(
+                    text=f"❌ {CATEGORIES[cat]}",
+                    callback_data=f"unsub_{cat}"
+                ) for cat in row
+            ])
+        
+        buttons.append([
+            InlineKeyboardButton(
+                text="✅ Finish", 
+                callback_data="unsub_finish"
+            )
+        ])
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+        await callback.message.edit_reply_markup(reply_markup=keyboard)
+        
+    except Exception as e:
+        await callback.answer("Error updating subscription")
+        print(f"Unsubscription error: {e}")
+
+#################################################################
+##################  NOTIFICATIONS   #############################
+#################################################################
 
 def get_category_item_count(category_key):
     try:
@@ -124,7 +330,8 @@ def get_message_ids_by_category_and_days(category, max_days_back):
     except Exception as e:
         print(f"Error fetching filtered items: {e}")
         return []
-        
+
+
 @dp.message(lambda message: message.text == "/lost")
 async def cmd_filter(message: Message, state: FSMContext):
     msg = await message.answer("🔍 Which category would you like to see?")
@@ -142,10 +349,9 @@ async def cmd_filter(message: Message, state: FSMContext):
 @dp.message(FilterForm.category, lambda m: m.text.startswith("FILTER_CATEGORY:"))
 async def handle_filter_category(message: Message, state: FSMContext):
     raw = message.text.replace("FILTER_CATEGORY:", "").strip()
-    category_name = CATEGORIES.get(raw, "Unknown")
-
-    data = await state.get_data()
+    await state.update_data(filter_category=raw)
     
+    data = await state.get_data()
     for msg_key in ['category_question', 'search_prompt_message']:
         msg_id = data.get(msg_key)
         if msg_id:
@@ -153,13 +359,12 @@ async def handle_filter_category(message: Message, state: FSMContext):
                 await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
             except Exception:
                 pass
-
+    
     try:
         await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
     except Exception:
         pass
-
-    await state.update_data(filter_category=category_name)
+    
     days_msg = await message.answer("📅 How many days back would you like to search?")
     await state.update_data(days_message=days_msg.message_id)
     await state.set_state(FilterForm.days)
@@ -181,12 +386,11 @@ async def handle_filter_days(message: Message, state: FSMContext):
     except Exception:
         pass
 
-    category = data.get('filter_category', 'Unknown')
-
-    message_ids = get_message_ids_by_category_and_days(category, days)
+    category_key = data.get('filter_category', 'Unknown') 
+    message_ids = get_message_ids_by_category_and_days(category_key, days)
 
     if not message_ids:
-        await message.answer(f"No items found for {category} in the last {days} days.")
+        await message.answer(f"No items found in this category for the last {days} days.")
         await state.clear()
         return
 
@@ -291,7 +495,7 @@ async def inline_query_handler(inline_query: InlineQuery):
 
     for key, title in CATEGORIES.items():
         if is_filter_context:
-            count = get_category_item_count(title)
+            count = get_category_item_count(key)
             if count == 0:
                 continue
             result = InlineQueryResultArticle(
@@ -540,49 +744,74 @@ async def update_comments(message: Message, state: FSMContext):
 @dp.callback_query(lambda c: c.data == "confirm_submit")
 async def confirm_submission(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
-
-    summary = (
-        f"✅ Your Form:\n"
-        f"Category: {data.get('category', '-')}\n"
-        f"Location: {data.get('location', '-')}\n"
-        f"Comments: {data.get('comments', '-')}"
-    )
-
+    category_key = next(k for k, v in CATEGORIES.items() if v == data.get("category"))
     summary_for_lost = (
         f"Location: {data.get('location', '-')}\n"
         f"Comments: {data.get('comments', '-')}\n"
         f"Date: {datetime.now().date()}"
     )
-
+    
     try:
-        sent_msg = await bot.send_photo(chat_id="@lost_and_found_helper", photo=data["photo"], caption=summary_for_lost)
-        submit_msg = await callback.message.answer("✅ Form submitted and photo saved to the channel.")
-        await state.update_data(submit_message=submit_msg.message_id)
-
+        sent_msg = await bot.send_photo(
+            chat_id="@lost_and_found_helper", 
+            photo=data["photo"], 
+            caption=summary_for_lost
+        )
+        
         conn = sqlite3.connect("found_items.db")
         cursor = conn.cursor()
         cursor.execute('''
             INSERT INTO found_items (message_id, category, date)
             VALUES (?, ?, ?)
-        ''', (sent_msg.message_id, data.get("category", "Unknown"), datetime.now().date()))
+        ''', (sent_msg.message_id, category_key, datetime.now()))
         conn.commit()
         conn.close()
-
-    except Exception as e:
-        error_msg = await callback.message.answer("⚠️ Failed to forward photo to the channel.")
-        await state.update_data(submit_message=error_msg.message_id)
-        print(e)
-
-    for msg_key in ['summary_message', 'buttons_message', 'submit_message']:
-        msg_id = data.get(msg_key)
-        if msg_id:
+        
+        conn = sqlite3.connect("found_items.db")
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT DISTINCT user_id FROM user_subscriptions
+            WHERE category = ?
+        ''', (category_key,))
+        
+        subscribers = [row[0] for row in cursor.fetchall()]
+        conn.close()
+        
+        for user_id in subscribers:
             try:
-                await bot.delete_message(chat_id=callback.message.chat.id, message_id=msg_id)
-            except Exception:
-                pass
-
+                notification_msg = await bot.send_photo(
+                    chat_id=user_id,
+                    photo=data["photo"],
+                    caption=f"🔔 New item found in {data.get('category')}:\n\n{summary_for_lost}"
+                )
+                
+                delete_btn = InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(
+                        text="🗑️ Delete",
+                        callback_data=f"notif_delete_{notification_msg.message_id}"
+                    )
+                ]])
+                
+                await bot.send_message(
+                    chat_id=user_id,
+                    text="This notification will auto-delete in 30 seconds",
+                    reply_markup=delete_btn
+                )
+                
+                asyncio.create_task(delete_notification(user_id, notification_msg.message_id))
+                
+            except Exception as e:
+                print(f"Failed to notify user {user_id}: {e}")
+        
+        await callback.message.answer("✅ Form submitted successfully")
+        
+    except Exception as e:
+        await callback.message.answer("⚠️ Failed to submit form")
+        print(f"Submission error: {e}")
+    
     await state.clear()
     await callback.answer()
+
 
 async def main():
     await dp.start_polling(bot)
