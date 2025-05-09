@@ -27,7 +27,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS found_items (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             category TEXT NOT NULL,
-            file_id TEXT NOT NULL,
+            message_id TEXT NOT NULL,
             date DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
@@ -37,9 +37,6 @@ def init_db():
 bot = Bot(token=config.bot_token.get_secret_value())
 dp = Dispatcher()
 
-
-#####################################
-#####################################
 def get_category_item_count(category_key):
     try:
         conn = sqlite3.connect("found_items.db")
@@ -55,14 +52,14 @@ def get_category_item_count(category_key):
         return 0
 
 
-def get_file_ids_by_category_and_days(category, max_days_back):
+def get_message_ids_by_category_and_days(category, max_days_back):
     try:
         cutoff_date = (datetime.now() - timedelta(days=int(max_days_back))).date()
         
         conn = sqlite3.connect("found_items.db")
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT file_id 
+            SELECT message_id 
             FROM found_items
             WHERE category = ?
               AND DATE(date) >= DATE(?)
@@ -93,6 +90,9 @@ class EditingForm(StatesGroup):
 class FilterForm(StatesGroup):
     category = State()
     days = State()
+
+class SearchState(StatesGroup): 
+    viewing = State()
 
 CATEGORIES = {
     "pants": "👖 Штаны",
@@ -127,47 +127,11 @@ CATEGORY_DESCRIPTIONS = {
 }
 
 
-@dp.inline_query()
-async def inline_query_handler(inline_query: InlineQuery):
-    query = inline_query.query.strip().lower()
-    results = []
-    
-    state: FSMContext = dp.fsm.get_context(bot, inline_query.from_user.id, inline_query.from_user.id)
-    current_state = await state.get_state()
-    
-    is_filter_context = current_state == "FilterForm:category"
-
-    for key, title in CATEGORIES.items():
-        if is_filter_context:
-            count = get_category_item_count(title)
-            if count == 0:
-                continue
-            result = InlineQueryResultArticle(
-                id=key,
-                title=title,
-                input_message_content=InputTextMessageContent(
-                    message_text=f"FILTER_CATEGORY:{key}"
-                ),
-                description=f"{count} items"
-            )
-        else:
-            description = CATEGORY_DESCRIPTIONS.get(key, "")
-            result = InlineQueryResultArticle(
-                id=key,
-                title=title,
-                input_message_content=InputTextMessageContent(
-                    message_text=f"SELECTED_CATEGORY:{key}"
-                ),
-                description=description
-            )
-        results.append(result)
-
-    await bot.answer_inline_query(inline_query.id, results, cache_time=1)
-
 @dp.message(lambda message: message.text == "/lost")
 async def cmd_filter(message: Message, state: FSMContext):
-    question_msg = await message.answer("🔍 Which category would you like to see?")
-    await state.update_data(category_question=question_msg.message_id)
+    msg = await message.answer("🔍 Which category would you like to see?")
+    await state.update_data(last_bot_message=msg.message_id)
+    await state.set_state(FilterForm.category)
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
@@ -175,10 +139,7 @@ async def cmd_filter(message: Message, state: FSMContext):
             switch_inline_query_current_chat=" "
         )]
     ])
-    search_msg = await message.answer("Search for a category:", reply_markup=keyboard)
-    await state.update_data(search_prompt_message=search_msg.message_id)
-    
-    await state.set_state(FilterForm.category)
+    await message.answer("Search for a category:", reply_markup=keyboard)
 
 @dp.message(FilterForm.category, lambda m: m.text.startswith("FILTER_CATEGORY:"))
 async def handle_filter_category(message: Message, state: FSMContext):
@@ -224,25 +185,64 @@ async def handle_filter_days(message: Message, state: FSMContext):
 
     category = data.get('filter_category', 'Unknown')
 
-    file_ids = get_file_ids_by_category_and_days(category, days)
-    # print(f"Found {len(file_ids)} matching items:")
-    # print(file_ids) 
+    message_ids = get_message_ids_by_category_and_days(category, days)
 
-    if not file_ids:
+    if not message_ids:
         await message.answer(f"No items found for {category} in the last {days} days.")
+        await state.clear()
+        return
+
+    sent_messages = []
+    
+    for msg_id in message_ids:
+        try:
+            sent_msg = await bot.forward_message(
+                chat_id=message.chat.id,
+                from_chat_id="@lost_and_found_helper",
+                message_id=msg_id
+            )
+            sent_messages.append(sent_msg.message_id)
+        except Exception as e:
+            print(f"Error sending message {msg_id}: {e}")
+
+    hide_orders_button = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🗑️ Hide Orders", callback_data="hide_orders")]
+    ])
+    
+    hide_msg = await message.answer("Click below to hide these orders:", reply_markup=hide_orders_button)
+    
+    await state.update_data(
+        sent_messages=sent_messages,
+        hide_button_message=hide_msg.message_id
+    )
+    await state.set_state(SearchState.viewing)
+
+@dp.callback_query(lambda c: c.data == "hide_orders")
+async def handle_hide_orders(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    
+    result_ids = data.get('sent_messages', [])
+    for msg_id in result_ids:
+        try:
+            await bot.delete_message(chat_id=callback.message.chat.id, message_id=msg_id)
+        except Exception as e:
+            print(f"Error deleting message {msg_id}: {e}")
+
+    hide_msg_id = data.get('hide_button_message')
+    if hide_msg_id:
+        try:
+            await bot.delete_message(chat_id=callback.message.chat.id, message_id=hide_msg_id)
+        except Exception as e:
+            print(f"Error deleting hide button: {e}")
     
     await state.clear()
-####################################
-###################################
-
-
+    await callback.answer("All messages hidden")
 
 @dp.message(lambda message: message.text == "/found")
 async def cmd_lost(message: Message, state: FSMContext):
     await state.set_state(LostForm.photo)
     msg = await message.answer("📸 Please send a photo.")
     await state.update_data(last_bot_message=msg.message_id)
-
 
 @dp.callback_query(lambda c: c.data == "makeOrder")
 async def start_make_order(callback: CallbackQuery, state: FSMContext):
@@ -286,10 +286,26 @@ async def inline_query_handler(inline_query: InlineQuery):
     query = inline_query.query.strip().lower()
     results = []
 
+    state: FSMContext = dp.fsm.get_context(bot, inline_query.from_user.id, inline_query.from_user.id)
+    current_state = await state.get_state()
+    
+    is_filter_context = current_state == "FilterForm:category"
+
     for key, title in CATEGORIES.items():
-        description = CATEGORY_DESCRIPTIONS.get(key, "")
-        full_text = (title + " " + description).lower()
-        if query in full_text:
+        if is_filter_context:
+            count = get_category_item_count(title)
+            if count == 0:
+                continue
+            result = InlineQueryResultArticle(
+                id=key,
+                title=title,
+                input_message_content=InputTextMessageContent(
+                    message_text=f"FILTER_CATEGORY:{key}"
+                ),
+                description=f"{count} items"
+            )
+        else:
+            description = CATEGORY_DESCRIPTIONS.get(key, "")
             result = InlineQueryResultArticle(
                 id=key,
                 title=title,
@@ -298,6 +314,8 @@ async def inline_query_handler(inline_query: InlineQuery):
                 ),
                 description=description
             )
+        full_text = (title + " " + result.description).lower()
+        if query in full_text:
             results.append(result)
 
     await bot.answer_inline_query(inline_query.id, results, cache_time=1)
@@ -546,9 +564,9 @@ async def confirm_submission(callback: CallbackQuery, state: FSMContext):
         conn = sqlite3.connect("found_items.db")
         cursor = conn.cursor()
         cursor.execute('''
-            INSERT INTO found_items (file_id, category, date)
+            INSERT INTO found_items (message_id, category, date)
             VALUES (?, ?, ?)
-        ''', (sent_msg.photo[-1].file_id, data.get("category", "Unknown"), datetime.now().date()))
+        ''', (sent_msg.message_id, data.get("category", "Unknown"), datetime.now().date()))
         conn.commit()
         conn.close()
 
@@ -568,95 +586,6 @@ async def confirm_submission(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer()
 
-@dp.message(EditingForm.photo)
-async def update_photo(message: Message, state: FSMContext):
-    if not message.photo:
-        await message.answer("Please send a valid photo.")
-        return
-
-    await state.update_data(photo=message.photo[-1].file_id)
-    data = await state.get_data()
-
-    last_msg_id = data.get('last_bot_message')
-    if last_msg_id:
-        try:
-            await bot.delete_message(chat_id=message.chat.id, message_id=last_msg_id)
-        except Exception:
-            pass
-
-    try:
-        await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
-    except Exception:
-        pass
-
-    await show_summary(message, data, state)
-
-@dp.message(EditingForm.category, lambda m: m.text.startswith("SELECTED_CATEGORY:"))
-async def update_category(message: Message, state: FSMContext):
-    raw = message.text.replace("SELECTED_CATEGORY:", "").strip()
-    category_name = CATEGORIES.get(raw, "Unknown")
-    await state.update_data(category=category_name)
-    data = await state.get_data()
-
-    last_msg_id = data.get('last_bot_message')
-    if last_msg_id:
-        try:
-            await bot.delete_message(chat_id=message.chat.id, message_id=last_msg_id)
-        except Exception:
-            pass
-
-    try:
-        await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
-    except Exception:
-        pass
-
-    await show_summary(message, data, state)
-
-@dp.message(EditingForm.location)
-async def update_location(message: Message, state: FSMContext):
-    if message.text.strip() == "-":
-        await message.answer("Skipped updating location.")
-    else:
-        await state.update_data(location=message.text)
-
-    data = await state.get_data()
-
-    last_msg_id = data.get('last_bot_message')
-    if last_msg_id:
-        try:
-            await bot.delete_message(chat_id=message.chat.id, message_id=last_msg_id)
-        except Exception:
-            pass
-
-    try:
-        await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
-    except Exception:
-        pass
-
-    await show_summary(message, data, state)
-
-@dp.message(EditingForm.comments)
-async def update_comments(message: Message, state: FSMContext):
-    if message.text.strip() == "-":
-        await message.answer("Skipped updating comments.")
-    else:
-        await state.update_data(comments=message.text)
-
-    data = await state.get_data()
-
-    last_msg_id = data.get('last_bot_message')
-    if last_msg_id:
-        try:
-            await bot.delete_message(chat_id=message.chat.id, message_id=last_msg_id)
-        except Exception:
-            pass
-
-    try:
-        await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
-    except Exception:
-        pass
-
-    await show_summary(message, data, state)
 
 async def main():
     await dp.start_polling(bot)
