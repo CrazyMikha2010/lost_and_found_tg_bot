@@ -23,6 +23,208 @@ from config_reader import config
 bot = Bot(token=config.bot_token.get_secret_value())
 dp = Dispatcher()
 
+ADMIN_IDS = [1793679875]
+ADMIN_EMOJI = "👮‍♂️"
+
+#############################################
+#############   ADMINS  #####################
+#############################################
+
+class AdminForm(StatesGroup):
+    broadcast = State()
+
+@dp.message(lambda message: message.text == "/start")
+async def start_handler(message: Message, state: FSMContext):
+    conn = sqlite3.connect("found_items.db")
+    cursor = conn.cursor()
+    cursor.execute('INSERT OR IGNORE INTO users (user_id) VALUES (?)', 
+                  (message.from_user.id,))
+    conn.commit()
+    conn.close()
+
+@dp.message(lambda message: message.text == "/showall")
+async def cmd_showall(message: Message):
+    if message.from_user.id not in ADMIN_IDS:
+        return
+    
+    conn = sqlite3.connect("found_items.db")
+    cursor = conn.cursor()
+    cursor.execute('SELECT message_id, category, date FROM found_items ORDER BY date DESC')
+    
+    results = cursor.fetchall()
+    conn.close()
+    
+    if not results:
+        await message.answer("No items found in database")
+        return
+    
+    for msg_id, category, date in results:
+        try:
+            sent_msg = await bot.forward_message(
+                chat_id=message.chat.id,
+                from_chat_id="@lost_and_found_helper",
+                message_id=msg_id
+            )
+            
+            delete_kb = InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(
+                    text="🗑️ Delete from DB",
+                    callback_data=f"admin_delete_{msg_id}"
+                )
+            ]])
+            
+            await bot.send_message(
+                chat_id=message.chat.id,
+                text=f"Category: {category}\nDate: {date}",
+                reply_markup=delete_kb
+            )
+            
+        except Exception as e:
+            print(f"Error showing message {msg_id}: {e}")
+    
+    cleanup_kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(
+            text="🧹 Hide All",
+            callback_data="admin_cleanup"
+        )
+    ]])
+    
+    await message.answer("End of list", reply_markup=cleanup_kb)
+
+@dp.callback_query(lambda c: c.data.startswith("admin_delete_"))
+async def handle_admin_delete(callback: CallbackQuery):
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Unauthorized")
+        return
+    
+    msg_id = callback.data.split("_")[2]
+    
+    try:
+        conn = sqlite3.connect("found_items.db")
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM found_items WHERE message_id = ?', (msg_id,))
+        conn.commit()
+        conn.close()
+        
+        try:
+            await bot.delete_message(
+                chat_id=callback.message.chat.id,
+                message_id=callback.message.message_id + 1
+            )
+        except Exception:
+            pass
+            
+        await callback.message.edit_text(
+            f"🗑️ Message {msg_id} deleted from database",
+            reply_markup=None
+        )
+        
+    except Exception as e:
+        await callback.answer(f"Error deleting message: {str(e)}")
+
+@dp.callback_query(lambda c: c.data == "admin_cleanup")
+async def handle_admin_cleanup(callback: CallbackQuery):
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Unauthorized")
+        return
+    
+    try:
+        conn = sqlite3.connect("found_items.db")
+        cursor = conn.cursor()
+        cursor.execute('SELECT message_id FROM found_items')
+        all_ids = [row[0] for row in cursor.fetchall()]
+        conn.close()
+        
+        for msg_id in all_ids:
+            try:
+                await bot.delete_message(
+                    chat_id=callback.message.chat.id,
+                    message_id=msg_id
+                )
+            except Exception:
+                pass
+                
+        await callback.message.delete()
+        
+    except Exception as e:
+        print(f"Cleanup error: {e}")
+    
+    await callback.answer("Cleanup completed")
+
+@dp.message(lambda message: message.text == "/sendall")
+async def cmd_sendall(message: Message, state: FSMContext):
+    if message.from_user.id not in ADMIN_IDS:
+        return
+    
+    await message.answer("Send the message you want to broadcast to all users:")
+    await state.set_state(AdminForm.broadcast)
+
+@dp.message(AdminForm.broadcast)
+async def process_broadcast(message: Message, state: FSMContext):
+    if message.from_user.id not in ADMIN_IDS:
+        return
+
+    conn = sqlite3.connect("found_items.db")
+    cursor = conn.cursor()
+    cursor.execute('SELECT user_id FROM users')
+    users = [row[0] for row in cursor.fetchall()]
+    conn.close()
+
+    success = 0
+    failed = 0
+
+    admin_badge = f"{ADMIN_EMOJI} *Broadcast from administrator:*\n\n"
+
+    if message.text:
+        full_text = admin_badge + message.text
+        for user_id in users:
+            try:
+                await bot.send_message(
+                    chat_id=user_id,
+                    text=full_text,
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                success += 1
+            except Exception:
+                failed += 1
+
+    elif message.photo:
+        photo_file_id = message.photo[-1].file_id
+        caption = message.caption or ""
+        full_caption = admin_badge + caption
+
+        for user_id in users:
+            try:
+                await bot.send_photo(
+                    chat_id=user_id,
+                    photo=photo_file_id,
+                    caption=full_caption,
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                success += 1
+            except Exception:
+                failed += 1
+
+    else:
+        await message.answer("Unsupported message type for broadcast.")
+        await state.clear()
+        return
+
+    stats_text = (
+        f"{ADMIN_EMOJI} Broadcast completed:\n"
+        f"✅ Successfully delivered: {success}\n"
+        f"❌ Failed attempts: {failed}"
+    )
+
+    await message.answer(stats_text)
+    await state.clear()
+
+
+#############################################
+#############   ADMINS  #####################
+#############################################
+
+
 class LostForm(StatesGroup):
     photo = State()
     category = State()
@@ -94,6 +296,13 @@ def init_db():
         )
     ''')
 
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            user_id INTEGER PRIMARY KEY,
+            first_seen DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
     conn.commit()
     conn.close()
 
@@ -115,10 +324,6 @@ async def delete_notification(chat_id, message_id):
         await bot.delete_message(chat_id, message_id)
     except Exception:
         pass
-
-#################################################################
-##################  NOTIFICATIONS   #############################
-#################################################################
 
 class NotificationForm(StatesGroup):
     action = State()
@@ -290,9 +495,6 @@ async def handle_unsubscribe(callback: CallbackQuery, state: FSMContext):
         await callback.answer("Error updating subscription")
         print(f"Unsubscription error: {e}")
 
-#################################################################
-##################  NOTIFICATIONS   #############################
-#################################################################
 
 def get_category_item_count(category_key):
     try:
