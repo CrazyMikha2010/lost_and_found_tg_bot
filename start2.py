@@ -12,6 +12,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
+from aiogram.exceptions import TelegramBadRequest
 import asyncio
 
 import sqlite3
@@ -26,9 +27,6 @@ dp = Dispatcher()
 ADMIN_IDS = [1793679875]
 ADMIN_EMOJI = "👮‍♂️"
 
-#############################################
-#############   ADMINS  #####################
-#############################################
 
 class AdminForm(StatesGroup):
     broadcast = State()
@@ -43,7 +41,7 @@ async def start_handler(message: Message, state: FSMContext):
     conn.close()
 
 @dp.message(lambda message: message.text == "/showall")
-async def cmd_showall(message: Message):
+async def cmd_showall(message: Message, state: FSMContext):
     if message.from_user.id not in ADMIN_IDS:
         return
     
@@ -57,14 +55,25 @@ async def cmd_showall(message: Message):
     if not results:
         await message.answer("No items found in database")
         return
-    
+    sent_messages = []
     for msg_id, category, date in results:
         try:
-            sent_msg = await bot.forward_message(
+            temp_msg = await bot.forward_message(
                 chat_id=message.chat.id,
                 from_chat_id="@lost_and_found_helper",
                 message_id=msg_id
             )
+            
+            caption = temp_msg.caption or ""
+            
+            location = "-"
+            comments = "-"
+            
+            for line in caption.split("\n"):
+                if line.startswith("Location:"):
+                    location = line.replace("Location:", "").strip()
+                elif line.startswith("Comments:"):
+                    comments = line.replace("Comments:", "").strip()
             
             delete_kb = InlineKeyboardMarkup(inline_keyboard=[[
                 InlineKeyboardButton(
@@ -73,10 +82,22 @@ async def cmd_showall(message: Message):
                 )
             ]])
             
-            await bot.send_message(
-                chat_id=message.chat.id,
-                text=f"Category: {category}\nDate: {date}",
+            sent_msg = await message.answer_photo(
+                photo=temp_msg.photo[-1].file_id if temp_msg.photo else None,
+                caption=(
+                    f"Category: {category}\n"
+                    f"Location: {location}\n"
+                    f"Comments: {comments}\n"
+                    f"Date: {date}"
+                ),
                 reply_markup=delete_kb
+            )
+            
+            sent_messages.append(sent_msg.message_id)
+            
+            await bot.delete_message(
+                chat_id=message.chat.id,
+                message_id=temp_msg.message_id
             )
             
         except Exception as e:
@@ -88,63 +109,81 @@ async def cmd_showall(message: Message):
             callback_data="admin_cleanup"
         )
     ]])
+
+    end_list = await message.answer("End of list", reply_markup=cleanup_kb)
+    await state.update_data(
+        sent_messages=sent_messages,
+        end_list_message=end_list.message_id,
+    )
     
-    await message.answer("End of list", reply_markup=cleanup_kb)
 
 @dp.callback_query(lambda c: c.data.startswith("admin_delete_"))
 async def handle_admin_delete(callback: CallbackQuery):
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("Unauthorized")
         return
-    
+
     msg_id = callback.data.split("_")[2]
-    
+
     try:
         conn = sqlite3.connect("found_items.db")
         cursor = conn.cursor()
         cursor.execute('DELETE FROM found_items WHERE message_id = ?', (msg_id,))
         conn.commit()
         conn.close()
-        
+
         try:
             await bot.delete_message(
                 chat_id=callback.message.chat.id,
-                message_id=callback.message.message_id + 1
+                message_id=callback.message.message_id
             )
-        except Exception:
-            pass
-            
-        await callback.message.edit_text(
-            f"🗑️ Message {msg_id} deleted from database",
-            reply_markup=None
+        except Exception as e:
+            print(f"Failed to delete admin message: {e}")
+
+        success_msg = await callback.message.answer(
+            f"🗑️ Message {msg_id} deleted from database"
         )
-        
+        asyncio.create_task(delete_after_delay(
+            chat_id=success_msg.chat.id,
+            message_id=success_msg.message_id,
+            delay=5
+        ))
+
     except Exception as e:
-        await callback.answer(f"Error deleting message: {str(e)}")
+        await callback.answer(f"❌ Error deleting message: {str(e)}")
+        print(f"Error during admin deletion: {e}")
 
 @dp.callback_query(lambda c: c.data == "admin_cleanup")
-async def handle_admin_cleanup(callback: CallbackQuery):
+async def handle_admin_cleanup(callback: CallbackQuery, state: FSMContext):
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("Unauthorized")
         return
     
     try:
-        conn = sqlite3.connect("found_items.db")
-        cursor = conn.cursor()
-        cursor.execute('SELECT message_id FROM found_items')
-        all_ids = [row[0] for row in cursor.fetchall()]
-        conn.close()
-        
-        for msg_id in all_ids:
+        data = await state.get_data()
+        message_ids = data.get("sent_messages", [])
+        hide_msg_id = data.get("end_list_message")
+
+        for msg_id in message_ids:
             try:
                 await bot.delete_message(
                     chat_id=callback.message.chat.id,
                     message_id=msg_id
                 )
-            except Exception:
-                pass
-                
-        await callback.message.delete()
+            except TelegramBadRequest as e:
+                if "message to delete not found" in str(e):
+                    print(f"Message {msg_id} already deleted")
+                else:
+                    print(f"Failed to delete message {msg_id}: {e}")
+
+        if hide_msg_id:
+            try:
+                await bot.delete_message(
+                    chat_id=callback.message.chat.id,
+                    message_id=hide_msg_id
+                )
+            except Exception as e:
+                print(f"Failed to delete hide button: {e}")
         
     except Exception as e:
         print(f"Cleanup error: {e}")
@@ -218,11 +257,6 @@ async def process_broadcast(message: Message, state: FSMContext):
 
     await message.answer(stats_text)
     await state.clear()
-
-
-#############################################
-#############   ADMINS  #####################
-#############################################
 
 
 class LostForm(StatesGroup):
@@ -318,12 +352,6 @@ async def handle_notification_delete(callback: CallbackQuery):
     
     await callback.answer("Notification deleted")
 
-async def delete_notification(chat_id, message_id):
-    await asyncio.sleep(30)
-    try:
-        await bot.delete_message(chat_id, message_id)
-    except Exception:
-        pass
 
 class NotificationForm(StatesGroup):
     action = State()
@@ -336,12 +364,26 @@ async def cmd_notification(message: Message, state: FSMContext):
         [InlineKeyboardButton(text="🔔 Subscribe", callback_data="notify_subscribe")],
         [InlineKeyboardButton(text="🔕 Unsubscribe", callback_data="notify_unsubscribe")]
     ])
-    await message.answer("What would you like to do?", reply_markup=keyboard)
+    what_would_msg = await message.answer("What would you like to do?", reply_markup=keyboard)
+    await state.update_data(what_would_message=what_would_msg.message_id)
+    await state.update_data(notification_message=message)
     await state.set_state(NotificationForm.action)
 
 @dp.callback_query(lambda c: c.data in ["notify_subscribe", "notify_unsubscribe"])
 async def handle_notification_action(callback: CallbackQuery, state: FSMContext):
     action = callback.data.split("_")[1]
+
+    data = await state.get_data()
+    what_would_msg_id = data.get("what_would_message")
+    
+    if what_would_msg_id:
+        try:
+            await bot.delete_message(
+                chat_id=data.get("notification_message").chat.id,
+                message_id=what_would_msg_id
+            )
+        except Exception as e:
+            print(f"Failed to delete search prompt message: {e}")
     
     if action == "subscribe":
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -350,8 +392,8 @@ async def handle_notification_action(callback: CallbackQuery, state: FSMContext)
                 switch_inline_query_current_chat="NOTIFY_SUBSCRIBE: "
             )]
         ])
-        await callback.message.edit_text("Search for a category to subscribe:")
-        await callback.message.answer("Search for a category:", reply_markup=keyboard)
+        search_prompt_msg = await callback.message.answer("Search for a category to subscribe:", reply_markup=keyboard)
+        await state.update_data(search_prompt_message=search_prompt_msg.message_id)
         await state.set_state(NotificationForm.subscribe)
     else:
         conn = sqlite3.connect("found_items.db")
@@ -365,7 +407,7 @@ async def handle_notification_action(callback: CallbackQuery, state: FSMContext)
         conn.close()
         
         if not subscriptions:
-            await callback.message.edit_text("You have no active subscriptions.")
+            await callback.message.answe("You have no active subscriptions.")
             await state.clear()
             return
         
@@ -387,7 +429,7 @@ async def handle_notification_action(callback: CallbackQuery, state: FSMContext)
         ])
         
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
-        await callback.message.edit_text("Tap categories to unsubscribe:", reply_markup=keyboard)
+        await callback.message.answer("Tap categories to unsubscribe:", reply_markup=keyboard)
         await state.set_state(NotificationForm.unsubscribe)
 
 @dp.inline_query(lambda q: q.query.startswith("NOTIFY_SUBSCRIBE:"))
@@ -430,10 +472,37 @@ async def handle_subscription_selection(message: Message, state: FSMContext):
         conn.commit()
         conn.close()
         
-        await message.answer(f"✅ Subscribed to {category} notifications!")
+        success_msg = await message.answer(f"✅ Subscribed to {category} notifications!")
+
+        asyncio.create_task(delete_after_delay(
+            chat_id=message.chat.id,
+            message_id=success_msg.message_id,
+            delay=15
+        ))
     except Exception as e:
         await message.answer("❌ Failed to subscribe")
         print(f"Subscription error: {e}")
+
+    try:
+        await bot.delete_message(
+            chat_id=message.chat.id,
+            message_id=message.message_id
+        )
+    except Exception as e:
+        print(f"Failed to delete SELECTED_SUB message: {e}")
+
+    data = await state.get_data()
+    search_prompt_msg_id = data.get("search_prompt_message")
+    
+    if search_prompt_msg_id:
+        try:
+            await bot.delete_message(
+                chat_id=message.chat.id,
+                message_id=search_prompt_msg_id
+            )
+        except Exception as e:
+            print(f"Failed to delete search prompt message: {e}")
+    
     
     await state.clear()
 
@@ -444,7 +513,12 @@ async def handle_unsubscribe(callback: CallbackQuery, state: FSMContext):
     
     if data == "finish":
         await callback.message.delete()
-        await callback.message.answer("✅ Subscription settings updated")
+        success_msg = await callback.message.answer("✅ Subscription settings updated")
+        asyncio.create_task(delete_after_delay(
+            chat_id=success_msg.chat.id,
+            message_id=success_msg.message_id,
+            delay=15
+        ))
         await state.clear()
         return
     
@@ -536,9 +610,8 @@ def get_message_ids_by_category_and_days(category, max_days_back):
 
 @dp.message(lambda message: message.text == "/lost")
 async def cmd_filter(message: Message, state: FSMContext):
-    msg = await message.answer("🔍 Which category would you like to see?")
-    await state.update_data(last_bot_message=msg.message_id)
-    await state.set_state(FilterForm.category)
+    prompt_msg = await message.answer("🔍 Which category would you like to see?")
+    await state.update_data(last_bot_message=prompt_msg.message_id)
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
@@ -546,7 +619,9 @@ async def cmd_filter(message: Message, state: FSMContext):
             switch_inline_query_current_chat=" "
         )]
     ])
-    await message.answer("Search for a category:", reply_markup=keyboard)
+    search_msg = await message.answer("Search for a category:", reply_markup=keyboard)
+    await state.update_data(search_prompt_message=search_msg.message_id)
+    await state.set_state(FilterForm.category)
 
 @dp.message(FilterForm.category, lambda m: m.text.startswith("FILTER_CATEGORY:"))
 async def handle_filter_category(message: Message, state: FSMContext):
@@ -554,14 +629,14 @@ async def handle_filter_category(message: Message, state: FSMContext):
     await state.update_data(filter_category=raw)
     
     data = await state.get_data()
-    for msg_key in ['category_question', 'search_prompt_message']:
+    for msg_key in ['last_bot_message', 'search_prompt_message']:
         msg_id = data.get(msg_key)
         if msg_id:
             try:
                 await bot.delete_message(chat_id=message.chat.id, message_id=msg_id)
-            except Exception:
-                pass
-    
+            except Exception as e:
+                print(f"Failed to delete message {msg_key}: {e}")
+
     try:
         await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
     except Exception:
@@ -999,13 +1074,34 @@ async def confirm_submission(callback: CallbackQuery, state: FSMContext):
                     text="This notification will auto-delete in 30 seconds",
                     reply_markup=delete_btn
                 )
-                
-                asyncio.create_task(delete_notification(user_id, notification_msg.message_id))
+
                 
             except Exception as e:
                 print(f"Failed to notify user {user_id}: {e}")
         
-        await callback.message.answer("✅ Form submitted successfully")
+        
+        success_msg = await callback.message.answer("✅ Form submitted successfully")
+
+        summary_msg_id = data.get('summary_message')
+        buttons_msg_id = data.get('buttons_message')
+
+        if summary_msg_id:
+            try:
+                await bot.delete_message(chat_id=callback.message.chat.id, message_id=summary_msg_id)
+            except Exception as e:
+                print(f"Failed to delete summary message: {e}")
+
+        if buttons_msg_id:
+            try:
+                await bot.delete_message(chat_id=callback.message.chat.id, message_id=buttons_msg_id)
+            except Exception as e:
+                print(f"Failed to delete buttons message: {e}")
+
+        asyncio.create_task(delete_after_delay(
+            chat_id=callback.message.chat.id,
+            message_id=success_msg.message_id,
+            delay=15
+        ))
         
     except Exception as e:
         await callback.message.answer("⚠️ Failed to submit form")
@@ -1013,6 +1109,13 @@ async def confirm_submission(callback: CallbackQuery, state: FSMContext):
     
     await state.clear()
     await callback.answer()
+
+async def delete_after_delay(chat_id, message_id, delay):
+    await asyncio.sleep(delay)
+    try:
+        await bot.delete_message(chat_id=chat_id, message_id=message_id)
+    except Exception as e:
+        print(f"Failed to auto-delete message {message_id}: {e}")
 
 
 async def main():
