@@ -24,7 +24,7 @@ from config_reader import config
 bot = Bot(token=config.bot_token.get_secret_value())
 dp = Dispatcher()
 
-ADMIN_IDS = [1793679875]
+ADMIN_IDS = [1793679875, 1667964657]
 ADMIN_EMOJI = "👮‍♂️"
 
 
@@ -109,7 +109,7 @@ async def handle_help_sections(callback: CallbackQuery):
     section = callback.data.split("_")[1]
     content = "❌ Неизвестный раздел помощи"
 
-    
+
     if section == "lost":
         content = (
             "🔍 <b>Как использовать /lost</b>\n\n"
@@ -174,7 +174,7 @@ async def cmd_showall(message: Message, state: FSMContext):
     conn.close()
     
     if not results:
-        await message.answer("No items found in database")
+        await message.answer("Ничего не нашли в БД")
         return
     sent_messages = []
     for msg_id, category, date in results:
@@ -191,14 +191,14 @@ async def cmd_showall(message: Message, state: FSMContext):
             comments = "-"
             
             for line in caption.split("\n"):
-                if line.startswith("Location:"):
-                    location = line.replace("Location:", "").strip()
-                elif line.startswith("Comments:"):
-                    comments = line.replace("Comments:", "").strip()
+                if line.startswith("Место:"):
+                    location = line.replace("Место:", "").strip()
+                elif line.startswith("Комментарии:"):
+                    comments = line.replace("Комментарии:", "").strip()
             
             delete_kb = InlineKeyboardMarkup(inline_keyboard=[[
                 InlineKeyboardButton(
-                    text="🗑️ Delete from DB",
+                    text="🗑️ Удалить из БД",
                     callback_data=f"admin_delete_{msg_id}"
                 )
             ]])
@@ -206,10 +206,10 @@ async def cmd_showall(message: Message, state: FSMContext):
             sent_msg = await message.answer_photo(
                 photo=temp_msg.photo[-1].file_id if temp_msg.photo else None,
                 caption=(
-                    f"Category: {category}\n"
-                    f"Location: {location}\n"
-                    f"Comments: {comments}\n"
-                    f"Date: {date}"
+                    f"Категория: {category}\n"
+                    f"Место: {location}\n"
+                    f"Комментарии: {comments}\n"
+                    f"Дата: {date}"
                 ),
                 reply_markup=delete_kb
             )
@@ -231,7 +231,7 @@ async def cmd_showall(message: Message, state: FSMContext):
         )
     ]])
 
-    end_list = await message.answer("End of list", reply_markup=cleanup_kb)
+    end_list = await message.answer("Конец списка", reply_markup=cleanup_kb)
     await state.update_data(
         sent_messages=sent_messages,
         end_list_message=end_list.message_id,
@@ -262,7 +262,7 @@ async def handle_admin_delete(callback: CallbackQuery):
             print(f"Failed to delete admin message: {e}")
 
         success_msg = await callback.message.answer(
-            f"🗑️ Message {msg_id} deleted from database"
+            f"🗑️ Сообщение {msg_id} удалено из БД"
         )
         asyncio.create_task(delete_after_delay(
             chat_id=success_msg.chat.id,
@@ -271,7 +271,7 @@ async def handle_admin_delete(callback: CallbackQuery):
         ))
 
     except Exception as e:
-        await callback.answer(f"❌ Error deleting message: {str(e)}")
+        await callback.answer(f"❌ Ошибка удаления сообщения: {str(e)}")
         print(f"Error during admin deletion: {e}")
 
 @dp.callback_query(lambda c: c.data == "admin_cleanup")
@@ -309,14 +309,14 @@ async def handle_admin_cleanup(callback: CallbackQuery, state: FSMContext):
     except Exception as e:
         print(f"Cleanup error: {e}")
     
-    await callback.answer("Cleanup completed")
+    await callback.answer("Очистка закончена")
 
 @dp.message(lambda message: message.text == "/sendall")
 async def cmd_sendall(message: Message, state: FSMContext):
     if message.from_user.id not in ADMIN_IDS:
         return
     
-    await message.answer("Send the message you want to broadcast to all users:")
+    await message.answer("Отправьте сообщения для всех пользователей:")
     await state.set_state(AdminForm.broadcast)
 
 @dp.message(AdminForm.broadcast)
@@ -333,7 +333,7 @@ async def process_broadcast(message: Message, state: FSMContext):
     success = 0
     failed = 0
 
-    admin_badge = f"{ADMIN_EMOJI} *Broadcast from administrator:*\n\n"
+    admin_badge = f"{ADMIN_EMOJI} *Сообщение от администратора:*\n\n"
 
     if message.text:
         full_text = admin_badge + message.text
@@ -366,7 +366,7 @@ async def process_broadcast(message: Message, state: FSMContext):
                 failed += 1
 
     else:
-        await message.answer("Unsupported message type for broadcast.")
+        await message.answer("Неподдерживаемая форма сообщения.")
         await state.clear()
         return
 
@@ -471,7 +471,7 @@ async def handle_notification_delete(callback: CallbackQuery):
     except Exception as e:
         print(f"Error deleting notification: {e}")
     
-    await callback.answer("Notification deleted")
+    await callback.answer("Напоминение спрятано.")
 
 
 class NotificationForm(StatesGroup):
@@ -482,10 +482,10 @@ class NotificationForm(StatesGroup):
 @dp.message(lambda message: message.text == "/notification")
 async def cmd_notification(message: Message, state: FSMContext):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔔 Subscribe", callback_data="notify_subscribe")],
-        [InlineKeyboardButton(text="🔕 Unsubscribe", callback_data="notify_unsubscribe")]
+        [InlineKeyboardButton(text="🔔 Подписаться", callback_data="notify_subscribe")],
+        [InlineKeyboardButton(text="🔕 Отписаться", callback_data="notify_unsubscribe")]
     ])
-    what_would_msg = await message.answer("What would you like to do?", reply_markup=keyboard)
+    what_would_msg = await message.answer("Что ты хочешь сделать?", reply_markup=keyboard)
     await state.update_data(what_would_message=what_would_msg.message_id)
     await state.update_data(notification_message=message)
     await state.set_state(NotificationForm.action)
@@ -509,11 +509,11 @@ async def handle_notification_action(callback: CallbackQuery, state: FSMContext)
     if action == "subscribe":
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(
-                text="🔍 Search Category",
+                text="🔍  Выбери категорию",
                 switch_inline_query_current_chat="NOTIFY_SUBSCRIBE: "
             )]
         ])
-        search_prompt_msg = await callback.message.answer("Search for a category to subscribe:", reply_markup=keyboard)
+        search_prompt_msg = await callback.message.answer("Выбери категорию для подписки:", reply_markup=keyboard)
         await state.update_data(search_prompt_message=search_prompt_msg.message_id)
         await state.set_state(NotificationForm.subscribe)
     else:
@@ -528,7 +528,7 @@ async def handle_notification_action(callback: CallbackQuery, state: FSMContext)
         conn.close()
         
         if not subscriptions:
-            await callback.message.answe("You have no active subscriptions.")
+            await callback.message.answer("У тебя нет активных подписок.")
             await state.clear()
             return
         
@@ -544,13 +544,13 @@ async def handle_notification_action(callback: CallbackQuery, state: FSMContext)
         
         buttons.append([
             InlineKeyboardButton(
-                text="✅ Finish", 
+                text="✅ Финиш", 
                 callback_data="unsub_finish"
             )
         ])
         
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
-        await callback.message.answer("Tap categories to unsubscribe:", reply_markup=keyboard)
+        await callback.message.answer("Нажми на категорию для отписки:", reply_markup=keyboard)
         await state.set_state(NotificationForm.unsubscribe)
 
 @dp.inline_query(lambda q: q.query.startswith("NOTIFY_SUBSCRIBE:"))
@@ -578,7 +578,7 @@ async def handle_subscription_selection(message: Message, state: FSMContext):
     category = CATEGORIES.get(raw, None)
     
     if not category:
-        await message.answer("Invalid category selected")
+        await message.answer("Не правильная категория выбрана")
         return
     
     user_id = message.from_user.id
@@ -593,7 +593,7 @@ async def handle_subscription_selection(message: Message, state: FSMContext):
         conn.commit()
         conn.close()
         
-        success_msg = await message.answer(f"✅ Subscribed to {category} notifications!")
+        success_msg = await message.answer(f"✅ Подписался на {category} напоминания!")
 
         asyncio.create_task(delete_after_delay(
             chat_id=message.chat.id,
@@ -601,7 +601,7 @@ async def handle_subscription_selection(message: Message, state: FSMContext):
             delay=15
         ))
     except Exception as e:
-        await message.answer("❌ Failed to subscribe")
+        await message.answer("❌ Не смогли оформить подписку")
         print(f"Subscription error: {e}")
 
     try:
@@ -634,7 +634,7 @@ async def handle_unsubscribe(callback: CallbackQuery, state: FSMContext):
     
     if data == "finish":
         await callback.message.delete()
-        success_msg = await callback.message.answer("✅ Subscription settings updated")
+        success_msg = await callback.message.answer("✅ Настройки подписки обновлены")
         asyncio.create_task(delete_after_delay(
             chat_id=success_msg.chat.id,
             message_id=success_msg.message_id,
@@ -678,7 +678,7 @@ async def handle_unsubscribe(callback: CallbackQuery, state: FSMContext):
         
         buttons.append([
             InlineKeyboardButton(
-                text="✅ Finish", 
+                text="✅ Финиш", 
                 callback_data="unsub_finish"
             )
         ])
@@ -687,7 +687,7 @@ async def handle_unsubscribe(callback: CallbackQuery, state: FSMContext):
         await callback.message.edit_reply_markup(reply_markup=keyboard)
         
     except Exception as e:
-        await callback.answer("Error updating subscription")
+        await callback.answer("Ошибка обновления подписки")
         print(f"Unsubscription error: {e}")
 
 
@@ -731,16 +731,16 @@ def get_message_ids_by_category_and_days(category, max_days_back):
 
 @dp.message(lambda message: message.text == "/lost")
 async def cmd_filter(message: Message, state: FSMContext):
-    prompt_msg = await message.answer("🔍 Which category would you like to see?")
+    prompt_msg = await message.answer("🔍 Какую категорию ты хочешь увидеть?")
     await state.update_data(last_bot_message=prompt_msg.message_id)
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
-            text="🔍 Search Category",
+            text="🔍 Выбери категорию",
             switch_inline_query_current_chat=" "
         )]
     ])
-    search_msg = await message.answer("Search for a category:", reply_markup=keyboard)
+    search_msg = await message.answer("Найди категорию:", reply_markup=keyboard)
     await state.update_data(search_prompt_message=search_msg.message_id)
     await state.set_state(FilterForm.category)
 
@@ -763,7 +763,7 @@ async def handle_filter_category(message: Message, state: FSMContext):
     except Exception:
         pass
     
-    days_msg = await message.answer("📅 How many days back would you like to search?")
+    days_msg = await message.answer("📅 На сколько дней назад вы бы хотели видеть объявления?")
     await state.update_data(days_message=days_msg.message_id)
     await state.set_state(FilterForm.days)
 
@@ -788,7 +788,7 @@ async def handle_filter_days(message: Message, state: FSMContext):
     message_ids = get_message_ids_by_category_and_days(category_key, days)
 
     if not message_ids:
-        await message.answer(f"No items found in this category for the last {days} days.")
+        await message.answer(f"Ничего не нашли в этой категории в последние {days} дней.")
         await state.clear()
         return
 
@@ -806,10 +806,10 @@ async def handle_filter_days(message: Message, state: FSMContext):
             print(f"Error sending message {msg_id}: {e}")
 
     hide_orders_button = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🗑️ Hide Orders", callback_data="hide_orders")]
+        [InlineKeyboardButton(text="🗑️ Спрятать объявление", callback_data="hide_orders")]
     ])
     
-    hide_msg = await message.answer("Click below to hide these orders:", reply_markup=hide_orders_button)
+    hide_msg = await message.answer("Нажмите на кнопку чтобы скрыть все объявления:", reply_markup=hide_orders_button)
     
     await state.update_data(
         sent_messages=sent_messages,
@@ -836,24 +836,24 @@ async def handle_hide_orders(callback: CallbackQuery, state: FSMContext):
             print(f"Error deleting hide button: {e}")
     
     await state.clear()
-    await callback.answer("All messages hidden")
+    await callback.answer("Все сообщения спрятаны")
 
 @dp.message(lambda message: message.text == "/found")
 async def cmd_lost(message: Message, state: FSMContext):
     await state.set_state(LostForm.photo)
-    msg = await message.answer("📸 Please send a photo.")
+    msg = await message.answer("📸 Пожалуйста отправьте фото.")
     await state.update_data(last_bot_message=msg.message_id)
 
 @dp.callback_query(lambda c: c.data == "makeOrder")
 async def start_make_order(callback: CallbackQuery, state: FSMContext):
     await state.set_state(LostForm.photo)
-    await callback.message.edit_text("📸 Please send a photo.")
+    await callback.message.edit_text("📸 Пожалуйста отправьте фото.")
     await state.update_data(last_bot_message=callback.message.message_id)
 
 @dp.message(LostForm.photo)
 async def receive_photo(message: Message, state: FSMContext):
     if not message.photo:
-        await message.answer("Please send a valid photo.")
+        await message.answer("Пожалуйста отправьте подходящее фото.")
         return
 
     await state.update_data(photo=message.photo[-1].file_id)
@@ -873,11 +873,11 @@ async def receive_photo(message: Message, state: FSMContext):
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
-            text="🔍 Search Category",
+            text="🔍 Выбери категорию",
             switch_inline_query_current_chat=" "
         )]
     ])
-    msg = await message.answer("Search for a category:", reply_markup=keyboard)
+    msg = await message.answer("Найди категорию:", reply_markup=keyboard)
     await state.update_data(last_bot_message=msg.message_id)
     await state.set_state(LostForm.category)
 
@@ -959,31 +959,31 @@ async def show_summary(message: Message, data: dict, state: FSMContext):
             pass
 
     summary = (
-        f"📄 <b>Review Your Form:</b>\n"
-        f"<b>Category:</b> {data.get('category', '-')}\n"
-        f"<b>Location:</b> {data.get('location', '-')}\n"
-        f"<b>Comments:</b> {data.get('comments', '-')}"
+        f"📄 <b>Твоя форма:</b>\n"
+        f"<b>Категория:</b> {data.get('category', '-')}\n"
+        f"<b>Место:</b> {data.get('location', '-')}\n"
+        f"<b>Комментарии:</b> {data.get('comments', '-')}"
     )
 
     confirm_buttons = [
-        [InlineKeyboardButton(text="✅ Confirm & Submit", callback_data="confirm_submit")],
+        [InlineKeyboardButton(text="✅ Подтвердить & Отправить", callback_data="confirm_submit")],
         [
             InlineKeyboardButton(
-                text="📷 Edit Photo" if data.get("photo") else "📸 Add Photo",
+                text="📷 Изменить Фото" if data.get("photo") else "📸 Добавить Фото",
                 callback_data="edit_photo"
             ),
             InlineKeyboardButton(
-                text="🏷️ Edit Category" if data.get("category") else "🔍 Add Category",
+                text="🏷️ Изменить категорию" if data.get("category") else "🔍 Добавить Категорию",
                 callback_data="edit_category"
             )
         ],
         [
             InlineKeyboardButton(
-                text="🏠 Edit Location" if data.get("location") else "📍 Add Location",
+                text="🏠 Изменить место" if data.get("location") else "📍 Добавить место",
                 callback_data="edit_location"
             ),
             InlineKeyboardButton(
-                text="💬 Edit Comment" if data.get("comments") else "📝 Add Comment",
+                text="💬 Изменить комментарий" if data.get("comments") else "📝 Добавить комментарий",
                 callback_data="edit_comments"
             )
         ]
@@ -997,7 +997,7 @@ async def show_summary(message: Message, data: dict, state: FSMContext):
     else:
         new_summary_msg = await message.answer(summary, parse_mode=ParseMode.HTML)
 
-    new_buttons_msg = await message.answer("Is everything correct?", reply_markup=confirm_keyboard)
+    new_buttons_msg = await message.answer("Все верно?", reply_markup=confirm_keyboard)
 
     await state.update_data(
         summary_message=new_summary_msg.message_id,
@@ -1009,25 +1009,25 @@ async def handle_edit(callback: CallbackQuery, state: FSMContext):
     action = callback.data.replace("edit_", "")
 
     if action == "photo":
-        msg = await callback.message.answer("📸 Please send a new photo.")
+        msg = await callback.message.answer("📸 Пожалуйста отправьте новое фото.")
         await state.update_data(last_bot_message=msg.message_id)
         await state.set_state(EditingForm.photo)
     elif action == "category":
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(
-                text="🔍 Search Category",
+                text="🔍 Выбери категорию",
                 switch_inline_query_current_chat=" "
             )]
         ])
-        msg = await callback.message.answer("Search for a category:", reply_markup=keyboard)
+        msg = await callback.message.answer("Найди категорию:", reply_markup=keyboard)
         await state.update_data(last_bot_message=msg.message_id)
         await state.set_state(EditingForm.category)
     elif action == "location":
-        msg = await callback.message.answer("Where was it lost? (Type `-` to skip)")
+        msg = await callback.message.answer("Где было потеряно? (Отправьте `-` для пропуска)")
         await state.update_data(last_bot_message=msg.message_id)
         await state.set_state(EditingForm.location)
     elif action == "comments":
-        msg = await callback.message.answer("Add or edit your comments: (Type `-` to skip)")
+        msg = await callback.message.answer("Добавьте или поменяйте комментарий: (Отправьте `-` для пропуска)")
         await state.update_data(last_bot_message=msg.message_id)
         await state.set_state(EditingForm.comments)
 
@@ -1052,7 +1052,7 @@ async def handle_edit(callback: CallbackQuery, state: FSMContext):
 @dp.message(EditingForm.photo)
 async def update_photo(message: Message, state: FSMContext):
     if not message.photo:
-        await message.answer("Please send a valid photo.")
+        await message.answer("Пожалуйста отправьте подходящее фото.")
         return
 
     await state.update_data(photo=message.photo[-1].file_id)
@@ -1096,7 +1096,7 @@ async def update_category(message: Message, state: FSMContext):
 @dp.message(EditingForm.location)
 async def update_location(message: Message, state: FSMContext):
     if message.text.strip() == "-":
-        await message.answer("Skipped updating location.")
+        await message.answer("Пропустил изменение места.")
     else:
         await state.update_data(location=message.text)
 
@@ -1119,7 +1119,7 @@ async def update_location(message: Message, state: FSMContext):
 @dp.message(EditingForm.comments)
 async def update_comments(message: Message, state: FSMContext):
     if message.text.strip() == "-":
-        await message.answer("Skipped updating comments.")
+        await message.answer("Пропустил изменение комментария.")
     else:
         await state.update_data(comments=message.text)
 
@@ -1144,9 +1144,9 @@ async def confirm_submission(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     category_key = next(k for k, v in CATEGORIES.items() if v == data.get("category"))
     summary_for_lost = (
-        f"Location: {data.get('location', '-')}\n"
-        f"Comments: {data.get('comments', '-')}\n"
-        f"Date: {datetime.now().date()}"
+        f"Место: {data.get('location', '-')}\n"
+        f"Комментарий: {data.get('comments', '-')}\n"
+        f"Дата: {datetime.now().date()}"
     )
     
     try:
@@ -1180,19 +1180,19 @@ async def confirm_submission(callback: CallbackQuery, state: FSMContext):
                 notification_msg = await bot.send_photo(
                     chat_id=user_id,
                     photo=data["photo"],
-                    caption=f"🔔 New item found in {data.get('category')}:\n\n{summary_for_lost}"
+                    caption=f"🔔 Новая вещь найдена в {data.get('category')}:\n\n{summary_for_lost}"
                 )
                 
                 delete_btn = InlineKeyboardMarkup(inline_keyboard=[[
                     InlineKeyboardButton(
-                        text="🗑️ Delete",
+                        text="🗑️ Спрятать",
                         callback_data=f"notif_delete_{notification_msg.message_id}"
                     )
                 ]])
                 
                 await bot.send_message(
                     chat_id=user_id,
-                    text="This notification will auto-delete in 30 seconds",
+                    text="Это напоминание само удалится через 30с",
                     reply_markup=delete_btn
                 )
 
@@ -1201,7 +1201,7 @@ async def confirm_submission(callback: CallbackQuery, state: FSMContext):
                 print(f"Failed to notify user {user_id}: {e}")
         
         
-        success_msg = await callback.message.answer("✅ Form submitted successfully")
+        success_msg = await callback.message.answer("✅ Форма заполнена успешно")
 
         summary_msg_id = data.get('summary_message')
         buttons_msg_id = data.get('buttons_message')
@@ -1225,7 +1225,7 @@ async def confirm_submission(callback: CallbackQuery, state: FSMContext):
         ))
         
     except Exception as e:
-        await callback.message.answer("⚠️ Failed to submit form")
+        await callback.message.answer("⚠️ Не получилось загрузить форму")
         print(f"Submission error: {e}")
     
     await state.clear()
