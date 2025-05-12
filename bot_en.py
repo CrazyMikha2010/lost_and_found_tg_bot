@@ -21,7 +21,7 @@ from datetime import datetime, timedelta
 
 from config_reader import config
 
-bot = Bot(token=config.bot_token.get_secret_value())
+bot = Bot(token=config.bot_token.get_secret_value()) # you can paste bot token here
 dp = Dispatcher()
 
 ADMIN_IDS = [1793679875]
