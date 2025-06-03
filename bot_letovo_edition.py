@@ -25,9 +25,110 @@ from datetime import datetime, timedelta
 bot = Bot("")
 dp = Dispatcher()
 
-ADMIN_IDS = []
+ADMIN_IDS = set([])
 ADMIN_EMOJI = "👮‍♂️"
 
+def is_admin(user_id):
+    return user_id in ADMIN_IDS
+
+##########################################################
+##################  ADMIN BROADCAST ######################
+##########################################################
+
+class QuickBroadcastForm(StatesGroup):
+    active = State()
+
+@dp.message(lambda message: message.text == "/quickstart")
+async def cmd_quickstart(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        await message.answer("❌ Вы не админ")
+        return
+
+    msg = await message.answer("🟢 Режим бродкаста включен.\nОтправляйте фото или фото с описаниями для публикации в daily broadcast.\nИспользуй /quickstop для выхода из режима.")
+    await state.update_data(broadcast_mode=True, broadcast_prompt=msg.message_id, broadcast_command=message.message_id)
+    await state.set_state(QuickBroadcastForm.active)
+
+@dp.message(QuickBroadcastForm.active)
+async def handle_broadcast_message(message: Message, state: FSMContext):
+    if message.text and message.text.startswith("/"):
+        await state.set_state(None)
+        if message.text == "/quickstop":
+            data = await state.get_data()
+
+            prompt_id = data.get('broadcast_prompt')
+            if prompt_id:
+                try:
+                    await bot.delete_message(chat_id=message.chat.id, message_id=prompt_id)
+                except Exception:
+                    pass
+
+            command_id = data.get('broadcast_command')
+            if command_id:
+                try:
+                    await bot.delete_message(chat_id=message.chat.id, message_id=command_id)
+                except Exception:
+                    pass
+            
+            try:
+                await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+            except Exception:
+                pass
+
+            await state.clear()
+            await message.answer("🔴 Бродкаст остановлен.")
+        return
+
+    user_id = message.from_user.id
+    
+    if not message.photo:
+        error_msg = await message.answer("⚠️ Пожалуйста отправьте фото.")
+        await asyncio.sleep(3)
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=error_msg.message_id)
+        except Exception:
+            pass
+        return
+
+    photo = message.photo[-1].file_id
+    caption = message.caption or "---"
+
+    conn = sqlite3.connect("found_items_let.db")  
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute('''
+            INSERT INTO found_items_let (category, message_id, date)
+            VALUES (?, ?, ?)
+        ''', (
+            "daily broadcasts",
+            photo,
+            datetime.now().date()
+        ))
+        conn.commit()
+        
+        sent_msg = await bot.send_photo(
+            chat_id="@lost_and_found_helper",
+            photo=photo,
+            caption=f"📢 Daily Broadcast\n{caption}\n📅 {datetime.now().date()}"
+        )
+        
+        confirm = await message.answer("✅ Сообщение отправлено")
+        await asyncio.sleep(2)
+        await bot.delete_message(chat_id=message.chat.id, message_id=confirm.message_id)
+
+    except Exception as e:
+        print(f"Error in broadcast mode: {e}")
+        error = await message.answer("❌ Не получилось отправить ваше сообщение")
+        await asyncio.sleep(3)
+        await bot.delete_message(chat_id=message.chat.id, message_id=error.message_id)
+
+    finally:
+        conn.close()
+
+
+##########################################################
+##################  ADMIN BROADCAST ######################
+##########################################################
 
 class AdminForm(StatesGroup):
     broadcast = State()
@@ -1254,6 +1355,7 @@ async def main():
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
+    init_db()
     asyncio.run(main())
 
     
