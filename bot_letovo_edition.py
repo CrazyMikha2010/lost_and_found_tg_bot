@@ -20,6 +20,7 @@ import asyncio
 import sqlite3
 
 from datetime import datetime, timedelta
+import calendar
 
 
 bot = Bot("")
@@ -31,9 +32,68 @@ ADMIN_EMOJI = "👮‍♂️"
 def is_admin(user_id):
     return user_id in ADMIN_IDS
 
-##########################################################
-##################  ADMIN BROADCAST ######################
-##########################################################
+class FilterForm(StatesGroup):
+    category = State()
+    days = State()
+
+class CalendarForm(StatesGroup):
+    viewing = State()
+
+def get_broadcasts_by_date(year, month, day):
+    try:
+        conn = sqlite3.connect("found_items_let.db")
+        cursor = conn.cursor()
+        date_str = f"{year}-{month:02d}-{day:02d}"
+
+        cursor.execute('''
+            SELECT message_id FROM found_items_let
+            WHERE category = "daily broadcasts"
+              AND DATE(date) = DATE(?)
+            ORDER BY date DESC
+        ''', (date_str,))
+
+        results = [row[0] for row in cursor.fetchall()]
+        conn.close()
+        return results
+    except Exception as e:
+        print(f"Ошибка при получении сообщений: {e}")
+        return []
+    
+@dp.callback_query(CalendarForm.viewing, lambda c: c.data.startswith("select_day:"))
+async def select_day_callback(callback: CallbackQuery, state: FSMContext):
+    date_str = callback.data.replace("select_day:", "")
+    year, month, day = map(int, date_str.split("-"))
+
+    broadcasts = get_broadcasts_by_date(year, month, day)
+
+    if not broadcasts:
+        await callback.answer("❌ Нет записей за этот день", show_alert=True)
+        return
+
+    sent_messages = []
+
+    for msg_id in broadcasts:
+        try:
+            sent_msg = await bot.forward_message(
+                chat_id=callback.message.chat.id,
+                from_chat_id="@lost_and_found_helper",
+                message_id=msg_id
+            )
+            sent_messages.append(sent_msg.message_id)
+        except Exception as e:
+            print(f"Не удалось переслать сообщение {msg_id}: {e}")
+
+    hide_button = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🗑️ Скрыть всё", callback_data="hide_daily_all")]
+    ])
+    hide_msg = await callback.message.answer("Нажмите, чтобы скрыть всё:", reply_markup=hide_button)
+
+    await state.update_data(
+        sent_daily_messages=sent_messages,
+        hide_daily_button=hide_msg.message_id
+    )
+
+    await callback.answer(f"Показано {len(broadcasts)} сообщений")
 
 class QuickBroadcastForm(StatesGroup):
     active = State()
@@ -96,22 +156,21 @@ async def handle_broadcast_message(message: Message, state: FSMContext):
     cursor = conn.cursor()
 
     try:
-        cursor.execute('''
-            INSERT INTO found_items_let (category, message_id, date)
-            VALUES (?, ?, ?)
-        ''', (
-            "daily broadcasts",
-            photo,
-            datetime.now().date()
-        ))
-        conn.commit()
-        
         sent_msg = await bot.send_photo(
             chat_id="@lost_and_found_helper",
             photo=photo,
             caption=f"📢 Daily Broadcast\n{caption}\n📅 {datetime.now().date()}"
         )
-        
+        cursor.execute('''
+            INSERT INTO found_items_let (category, message_id, date)
+            VALUES (?, ?, ?)
+        ''', (
+            "daily broadcasts",
+            sent_msg.message_id,
+            datetime.now().date()
+        ))
+        conn.commit()
+
         confirm = await message.answer("✅ Сообщение отправлено")
         await asyncio.sleep(2)
         await bot.delete_message(chat_id=message.chat.id, message_id=confirm.message_id)
@@ -125,10 +184,120 @@ async def handle_broadcast_message(message: Message, state: FSMContext):
     finally:
         conn.close()
 
+@dp.message(lambda message: message.text == "/calendar")
+async def cmd_calendar(message: Message, state: FSMContext):
+    keyboard, year, month = generate_calendar_buttons(offset=0)
+    title = f"🗓 Выберите день для {calendar.month_name[month]} {year}"
+    msg = await message.answer(title, reply_markup=keyboard)
+    await state.update_data(calendar_message=msg.message_id)
+    await state.set_state(CalendarForm.viewing)
 
-##########################################################
-##################  ADMIN BROADCAST ######################
-##########################################################
+def generate_calendar_buttons(offset=0):
+    today = datetime.now()
+    year = today.year
+    month = today.month + offset
+
+    if month < 1:
+        month = 12
+        year -= 1
+    elif month > 12:
+        month = 1
+        year += 1
+
+    cal = calendar.Calendar(firstweekday=0)
+    month_days = cal.monthdayscalendar(year, month)
+
+    buttons = []
+
+    buttons.append([
+        InlineKeyboardButton(text="⬅️", callback_data=f"cal_prev:{offset}"),
+        InlineKeyboardButton(text=f"{calendar.month_name[month]} {year}", callback_data="ignore"),
+        InlineKeyboardButton(text="➡️", callback_data=f"cal_next:{offset}")
+    ])
+
+    week_days = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+    buttons.append([InlineKeyboardButton(text=d, callback_data="ignore") for d in week_days])
+
+    for week in month_days:
+        week_row = []
+        for day in week:
+            if day == 0:
+                week_row.append(InlineKeyboardButton(text=" ", callback_data="ignore"))
+            else:
+                has_content = check_if_has_content_for_day(year, month, day)
+                text = str(day) if has_content else "❌"
+
+                week_row.append(InlineKeyboardButton(
+                    text=text,
+                    callback_data=f"select_day:{year}-{month:02d}-{day:02d}"
+                ))
+        buttons.append(week_row)
+
+    return InlineKeyboardMarkup(inline_keyboard=buttons), year, month
+
+@dp.callback_query(CalendarForm.viewing, lambda c: c.data.startswith(("cal_prev", "cal_next")))
+async def navigate_month(callback: CallbackQuery, state: FSMContext):
+    offset = int(callback.data.split(":")[1])
+    if "cal_prev" in callback.data:
+        offset -= 1
+    elif "cal_next" in callback.data:
+        offset += 1
+
+    keyboard, year, month = generate_calendar_buttons(offset)
+    title = f"🗓 Выберите дату для {calendar.month_name[month]} {year}"
+    try:
+        await callback.message.edit_text(title, reply_markup=keyboard)
+    except Exception as e:
+        print(f"Ошибка редактирования календаря: {e}")
+    await callback.answer()
+
+@dp.callback_query(CalendarForm.viewing, lambda c: c.data.startswith("select_day:"))
+async def select_day_callback(callback: CallbackQuery, state: FSMContext):
+    date_str = callback.data.replace("select_day:", "")
+    year, month, day = map(int, date_str.split("-"))
+
+    month_title = calendar.month_name[month]
+    await callback.message.answer(f"📅 Вы выбрали: {day} {month_title}, {year}")
+    await callback.answer()
+
+@dp.callback_query(lambda c: c.data == "hide_daily_all")
+async def handle_hide_daily_all(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+
+    for msg_id in data.get("sent_daily_messages", []):
+        try:
+            await bot.delete_message(chat_id=callback.message.chat.id, message_id=msg_id)
+        except Exception as e:
+            print(f"Не удалось удалить сообщение {msg_id}: {e}")
+
+    try:
+        await bot.delete_message(
+            chat_id=callback.message.chat.id,
+            message_id=data.get("hide_daily_button")
+        )
+    except Exception:
+        pass
+
+    await callback.answer("✅ Все сообщения скрыты")
+
+def check_if_has_content_for_day(year, month, day):
+    try:
+        conn = sqlite3.connect("found_items_let.db")
+        cursor = conn.cursor()
+        date_str = f"{year}-{month:02d}-{day:02d}"
+
+        cursor.execute('''
+            SELECT COUNT(*) FROM found_items_let
+            WHERE category = "daily broadcasts"
+              AND DATE(date) = DATE(?)
+        ''', (date_str,))
+        
+        count = cursor.fetchone()[0]
+        conn.close()
+        return count > 0
+    except Exception as e:
+        print(f"Ошибка при проверке контента за {date_str}: {e}")
+        return False
 
 class AdminForm(StatesGroup):
     broadcast = State()
@@ -496,14 +665,11 @@ class EditingForm(StatesGroup):
     location = State()
     comments = State()
 
-class FilterForm(StatesGroup):
-    category = State()
-    days = State()
-
 class SearchState(StatesGroup): 
     viewing = State()
 
 CATEGORIES = {
+    "daily broadcasts": "🔍 Обход дежурного менеджера",
     "pants": "👖 Штаны",
     "jackets": "🧥 Куртки",
     "sweaters": "🧣 Кофты",
@@ -524,6 +690,7 @@ CATEGORIES = {
 }
 
 CATEGORY_DESCRIPTIONS = {
+    "daily broadcasts": "ночной обход / фотографии с ресепшена",
     "pants": "джинсы / спортивные / шорты",
     "jackets": "",
     "sweaters": "толстовки / зипки / футболки",
@@ -874,10 +1041,17 @@ async def handle_filter_category(message: Message, state: FSMContext):
         await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
     except Exception:
         pass
-    
-    days_msg = await message.answer("📅 На сколько дней назад вы бы хотели видеть объявления?")
-    await state.update_data(days_message=days_msg.message_id)
-    await state.set_state(FilterForm.days)
+
+    if raw == "daily broadcasts":
+        keyboard, year, month = generate_calendar_buttons(offset=0)
+        title = f"🗓 Выберите день для {calendar.month_name[month]} {year}"
+        msg = await message.answer(title, reply_markup=keyboard)
+        await state.update_data(calendar_message=msg.message_id)
+        await state.set_state(CalendarForm.viewing)
+    else:
+        days_msg = await message.answer("📅 На сколько дней назад вы бы хотели видеть объявления?")
+        await state.update_data(days_message=days_msg.message_id)
+        await state.set_state(FilterForm.days)
 
 @dp.message(FilterForm.days)
 async def handle_filter_days(message: Message, state: FSMContext):
@@ -1017,6 +1191,8 @@ async def inline_query_handler(inline_query: InlineQuery):
                 description=f"{count} items"
             )
         else:
+            if key == "daily broadcasts":
+                continue
             description = CATEGORY_DESCRIPTIONS.get(key, "")
             result = InlineQueryResultArticle(
                 id=key,
@@ -1053,6 +1229,7 @@ async def handle_category_selection(message: Message, state: FSMContext):
         pass
 
     await show_summary(message, data, state)
+
 
 async def show_summary(message: Message, data: dict, state: FSMContext):
     summary_msg_id = data.get('summary_message')
