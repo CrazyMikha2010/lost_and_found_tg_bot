@@ -1,3 +1,11 @@
+"""
+it's an example of bad bot creation
+not asynchronous 
+terrible structure 
+after this I decided to re-learn aiogram from beginning
+"""
+
+
 from config_reader import config
 import asyncio
 import logging
