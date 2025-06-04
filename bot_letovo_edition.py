@@ -119,7 +119,7 @@ class NotificationForm(StatesGroup):
 # gets all broadcasts made in corresponding date
 def get_broadcasts_by_date(year, month, day):
     try:
-        conn = sqlite3.connect("found_items_let.db")
+        conn = sqlite3.connect("yout_databse_name.db")
         cursor = conn.cursor()
         date_str = f"{year}-{month:02d}-{day:02d}"
 
@@ -230,7 +230,7 @@ async def handle_broadcast_message(message: Message, state: FSMContext):
     photo = message.photo[-1].file_id
     caption = message.caption or "---"
 
-    conn = sqlite3.connect("found_items_let.db")  
+    conn = sqlite3.connect("yout_databse_name.db")  
     cursor = conn.cursor()
 
     try:
@@ -365,7 +365,7 @@ async def handle_hide_daily_all(callback: CallbackQuery, state: FSMContext):
 # helper func for checking if day has broadcasts on it or no
 def check_if_has_content_for_day(year, month, day):
     try:
-        conn = sqlite3.connect("found_items_let.db")
+        conn = sqlite3.connect("yout_databse_name.db")
         cursor = conn.cursor()
         date_str = f"{year}-{month:02d}-{day:02d}"
 
@@ -385,7 +385,7 @@ def check_if_has_content_for_day(year, month, day):
 # start command
 @dp.message(lambda message: message.text == "/start")
 async def start_handler(message: Message, state: FSMContext):
-    conn = sqlite3.connect("found_items_let.db")
+    conn = sqlite3.connect("yout_databse_name.db")
     cursor = conn.cursor()
     cursor.execute('INSERT OR IGNORE INTO users (user_id) VALUES (?)', 
                   (message.from_user.id,))
@@ -522,7 +522,7 @@ async def cmd_showall(message: Message, state: FSMContext):
     if message.from_user.id not in ADMIN_IDS:
         return
     
-    conn = sqlite3.connect("found_items_let.db")
+    conn = sqlite3.connect("yout_databse_name.db")
     cursor = conn.cursor()
     cursor.execute('SELECT message_id, category, date FROM found_items_let ORDER BY date DESC')
     
@@ -603,7 +603,7 @@ async def handle_admin_delete(callback: CallbackQuery):
     msg_id = callback.data.split("_")[2]
 
     try:
-        conn = sqlite3.connect("found_items_let.db")
+        conn = sqlite3.connect("yout_databse_name.db")
         cursor = conn.cursor()
         cursor.execute('DELETE FROM found_items_let WHERE message_id = ?', (msg_id,))
         conn.commit()
@@ -683,7 +683,7 @@ async def process_broadcast(message: Message, state: FSMContext):
     if message.from_user.id not in ADMIN_IDS:
         return
 
-    conn = sqlite3.connect("found_items_let.db")
+    conn = sqlite3.connect("yout_databse_name.db")
     cursor = conn.cursor()
     cursor.execute('SELECT user_id FROM users')
     users = [row[0] for row in cursor.fetchall()]
@@ -740,7 +740,7 @@ async def process_broadcast(message: Message, state: FSMContext):
 
 # initialises database (creates a file and builds tables in it)
 def init_db():
-    conn = sqlite3.connect("found_items_let.db")
+    conn = sqlite3.connect("yout_databse_name.db")
     cursor = conn.cursor()
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS found_items_let (
@@ -822,7 +822,7 @@ async def handle_notification_action(callback: CallbackQuery, state: FSMContext)
         await state.update_data(search_prompt_message=search_prompt_msg.message_id)
         await state.set_state(NotificationForm.subscribe)
     else:
-        conn = sqlite3.connect("found_items_let.db")
+        conn = sqlite3.connect("yout_databse_name.db")
         cursor = conn.cursor()
         cursor.execute('''
             SELECT DISTINCT category FROM user_subscriptions
@@ -893,7 +893,7 @@ async def handle_subscription_selection(message: Message, state: FSMContext):
     user_id = message.from_user.id
     
     try:
-        conn = sqlite3.connect("found_items_let.db")
+        conn = sqlite3.connect("yout_databse_name.db")
         cursor = conn.cursor()
         cursor.execute('''
             INSERT OR IGNORE INTO user_subscriptions (user_id, category)
@@ -956,7 +956,7 @@ async def handle_unsubscribe(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     
     try:
-        conn = sqlite3.connect("found_items_let.db")
+        conn = sqlite3.connect("yout_databse_name.db")
         cursor = conn.cursor()
         cursor.execute('''
             DELETE FROM user_subscriptions
@@ -965,7 +965,7 @@ async def handle_unsubscribe(callback: CallbackQuery, state: FSMContext):
         conn.commit()
         conn.close()
         
-        conn = sqlite3.connect("found_items_let.db")
+        conn = sqlite3.connect("yout_databse_name.db")
         cursor = conn.cursor()
         cursor.execute('''
             SELECT DISTINCT category FROM user_subscriptions
@@ -1002,7 +1002,7 @@ async def handle_unsubscribe(callback: CallbackQuery, state: FSMContext):
 # counts items in corresponding category for inline query description
 def get_category_item_count(category_key):
     try:
-        conn = sqlite3.connect("found_items_let.db")
+        conn = sqlite3.connect("yout_databse_name.db")
         cursor = conn.cursor()
         cursor.execute('''
             SELECT COUNT(*) FROM found_items_let WHERE category = ?
@@ -1019,7 +1019,7 @@ def get_message_ids_by_category_and_days(category, max_days_back):
     try:
         cutoff_date = (datetime.now() - timedelta(days=int(max_days_back))).date()
         
-        conn = sqlite3.connect("found_items_let.db")
+        conn = sqlite3.connect("yout_databse_name.db")
         cursor = conn.cursor()
         cursor.execute('''
             SELECT message_id 
@@ -1489,7 +1489,7 @@ async def confirm_submission(callback: CallbackQuery, state: FSMContext):
             caption=summary_for_lost
         )
         
-        conn = sqlite3.connect("found_items_let.db")
+        conn = sqlite3.connect("yout_databse_name.db")
         cursor = conn.cursor()
         cursor.execute('''
             INSERT INTO found_items_let (message_id, category, date)
@@ -1498,7 +1498,7 @@ async def confirm_submission(callback: CallbackQuery, state: FSMContext):
         conn.commit()
         conn.close()
         
-        conn = sqlite3.connect("found_items_let.db")
+        conn = sqlite3.connect("yout_databse_name.db")
         cursor = conn.cursor()
         cursor.execute('''
             SELECT DISTINCT user_id FROM user_subscriptions
