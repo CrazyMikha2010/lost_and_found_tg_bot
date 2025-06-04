@@ -1,3 +1,7 @@
+"""
+for explicit comments go to bot_letovo_edition.py
+"""
+
 from aiogram import Bot, Dispatcher
 from aiogram.types import (
     Message,
