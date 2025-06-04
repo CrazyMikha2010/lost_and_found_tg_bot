@@ -1,3 +1,7 @@
+"""
+for explicit comments go to bot_letovo_edition.py
+"""
+
 from aiogram import Bot, Dispatcher
 from aiogram.types import (
     Message,
@@ -19,9 +23,7 @@ import sqlite3
 
 from datetime import datetime, timedelta
 
-from config_reader import config
-
-bot = Bot(token=config.bot_token.get_secret_value()) # you can paste bot token here
+bot = Bot("YOUR API TOKEN HERE")
 dp = Dispatcher()
 
 ADMIN_IDS = [1793679875, 1667964657]
