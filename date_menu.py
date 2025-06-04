@@ -22,6 +22,14 @@ import calendar
 
 """
 /calendar sends calendar to choose date
+it'll look smth like this:
+⬅️ | Июнь 2025 | ➡️
+ПН|ВТ|СР|ЧТ|ПТ|СБ|ВС
+  |  |  |  |  |  |01
+02|03|04|05|06|07|08
+…
+23|24|25|26|27|28|29
+30|  |  |  |  |  |
 """
 
 class CalendarForm(StatesGroup):
@@ -29,7 +37,6 @@ class CalendarForm(StatesGroup):
 
 @dp.message(lambda message: message.text == "/calendar")
 async def cmd_calendar(message: Message, state: FSMContext):
-    """Показываем календарь на текущий месяц"""
     keyboard, year, month = generate_calendar_buttons(offset=0)
     title = f"🗓 Выберите день для {calendar.month_name[month]} {year}"
     msg = await message.answer(title, reply_markup=keyboard)
