@@ -1,11 +1,17 @@
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import InlineQuery, InputTextMessageContent, InlineQueryResultArticle
 import asyncio
-from config_reader import config
 
-bot = Bot(token=config.bot_token.get_secret_value())
+bot = Bot("YOUR BOT TOKEN HERE")
 
 dp = Dispatcher()
+
+"""
+this is an inline query search which 
+in real time auto completes user's input
+for further info go here:
+https://core.telegram.org/bots/api#inline-mode
+"""
 
 items = {
     "ruben": "boss kofemanii",
