@@ -1,4 +1,6 @@
-#!/usr/bin/python3
+"""
+this is main and final code which i describes in readme
+"""
 
 from aiogram import Bot, Dispatcher
 from aiogram.types import (
@@ -23,14 +25,63 @@ from datetime import datetime, timedelta
 import calendar
 
 
-bot = Bot("")
+bot = Bot("YOUR BOT TOKEN HERE")
 dp = Dispatcher()
 
-ADMIN_IDS = set([])
+# you can add your own categories, here's copy and paste form "": "",
+CATEGORIES = {
+    "daily broadcasts": "🔍 Обход дежурного менеджера",
+    "pants": "👖 Штаны",
+    "jackets": "🧥 Куртки",
+    "sweaters": "🧣 Кофты",
+    "shoes": "👟 Обувь",
+    "bags": "🎒 Сумки",
+    "bagsadv": "🛍️ Сумки с вещами внутри",
+    "hats": "🎩 Головные уборы",
+    "badges": "🎖️ Бейджики",
+    "chargers_electronics": "🔌 Зарядки",
+    "electronics_devices": "💻 Электроника",
+    "accessories": "🕶️ Аксессуары",
+    "sports_gear": "🎾 Спортинвентарь",
+    "money_cards": "💰 Деньги и карты",
+    "tshirts": "👕 Футболки",
+    "winteracc": "🧢 Шапки и 🧤 Перчатки",
+    "bevs": "💧 Фляжки",
+    "other": "📦 Другое"
+}
+
+CATEGORY_DESCRIPTIONS = {
+    "daily broadcasts": "ночной обход / фотографии с ресепшена",
+    "pants": "джинсы / спортивные / шорты",
+    "jackets": "",
+    "sweaters": "толстовки / зипки / футболки",
+    "shoes": "спортивная / неспортивная",
+    "bags": "",
+    "bagsadv": "сумки / шопперы / пакеты с вещами внутри",
+    "hats": "шапки / кепки",
+    "badges": "",
+    "chargers_electronics": "",
+    "electronics_devices": "компьютеры / телефоны / наушники",
+    "accessories": "очки, кольца, ювелирка и тд",
+    "sports_gear": "мячи, ракетки, гантели и тд",
+    "money_cards": "",
+    "tshirts": "футболки / майки",
+    "winteracc": "шапки, перчатки, снуды и тп",
+    "bevs": "фляжки / бутылки",
+    "other": ""
+}
+
+"""
+admins have more commands to use, so add their ids to list
+to get id, text @getmyid_bot and paste code after <<Your user ID:>>
+"""
+ADMIN_IDS = set([0123456789, 9876543210])
 ADMIN_EMOJI = "👮‍♂️"
 
 def is_admin(user_id):
     return user_id in ADMIN_IDS
+
+# classes for tracking states separately and asynchronous for each user
 
 class FilterForm(StatesGroup):
     category = State()
@@ -39,6 +90,33 @@ class FilterForm(StatesGroup):
 class CalendarForm(StatesGroup):
     viewing = State()
 
+class AdminForm(StatesGroup):
+    broadcast = State()
+
+class QuickBroadcastForm(StatesGroup):
+    active = State()
+
+class LostForm(StatesGroup):
+    photo = State()
+    category = State()
+    location = State()
+    comments = State()
+
+class EditingForm(StatesGroup):
+    photo = State()
+    category = State()
+    location = State()
+    comments = State()
+
+class SearchState(StatesGroup): 
+    viewing = State()
+
+class NotificationForm(StatesGroup):
+    action = State()
+    subscribe = State()
+    unsubscribe = State()
+
+# gets all broadcasts made in corresponding date
 def get_broadcasts_by_date(year, month, day):
     try:
         conn = sqlite3.connect("found_items_let.db")
@@ -58,7 +136,8 @@ def get_broadcasts_by_date(year, month, day):
     except Exception as e:
         print(f"Ошибка при получении сообщений: {e}")
         return []
-    
+
+# sends all broadcast messasges in corresponding day
 @dp.callback_query(CalendarForm.viewing, lambda c: c.data.startswith("select_day:"))
 async def select_day_callback(callback: CallbackQuery, state: FSMContext):
     date_str = callback.data.replace("select_day:", "")
@@ -76,7 +155,7 @@ async def select_day_callback(callback: CallbackQuery, state: FSMContext):
         try:
             sent_msg = await bot.forward_message(
                 chat_id=callback.message.chat.id,
-                from_chat_id="@lost_and_found_helper",
+                from_chat_id="@help_channel_name",
                 message_id=msg_id
             )
             sent_messages.append(sent_msg.message_id)
@@ -95,9 +174,7 @@ async def select_day_callback(callback: CallbackQuery, state: FSMContext):
 
     await callback.answer(f"Показано {len(broadcasts)} сообщений")
 
-class QuickBroadcastForm(StatesGroup):
-    active = State()
-
+# /quickstart command handling
 @dp.message(lambda message: message.text == "/quickstart")
 async def cmd_quickstart(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
@@ -108,6 +185,7 @@ async def cmd_quickstart(message: Message, state: FSMContext):
     await state.update_data(broadcast_mode=True, broadcast_prompt=msg.message_id, broadcast_command=message.message_id)
     await state.set_state(QuickBroadcastForm.active)
 
+# handling of send during broadcast mode messages
 @dp.message(QuickBroadcastForm.active)
 async def handle_broadcast_message(message: Message, state: FSMContext):
     if message.text and message.text.startswith("/"):
@@ -157,7 +235,7 @@ async def handle_broadcast_message(message: Message, state: FSMContext):
 
     try:
         sent_msg = await bot.send_photo(
-            chat_id="@lost_and_found_helper",
+            chat_id="@help_channel_name",
             photo=photo,
             caption=f"📢 Daily Broadcast\n{caption}\n📅 {datetime.now().date()}"
         )
@@ -184,6 +262,7 @@ async def handle_broadcast_message(message: Message, state: FSMContext):
     finally:
         conn.close()
 
+# easter egg:) tbh i'm just proud of my calendar creation
 @dp.message(lambda message: message.text == "/calendar")
 async def cmd_calendar(message: Message, state: FSMContext):
     keyboard, year, month = generate_calendar_buttons(offset=0)
@@ -192,6 +271,16 @@ async def cmd_calendar(message: Message, state: FSMContext):
     await state.update_data(calendar_message=msg.message_id)
     await state.set_state(CalendarForm.viewing)
 
+@dp.callback_query(CalendarForm.viewing, lambda c: c.data.startswith("select_day:"))
+async def select_day_callback(callback: CallbackQuery, state: FSMContext):
+    date_str = callback.data.replace("select_day:", "")
+    year, month, day = map(int, date_str.split("-"))
+
+    month_title = calendar.month_name[month]
+    await callback.message.answer(f"📅 Вы выбрали: {day} {month_title}, {year}")
+    await callback.answer()
+
+# generates all buttons for calendar
 def generate_calendar_buttons(offset=0):
     today = datetime.now()
     year = today.year
@@ -235,6 +324,7 @@ def generate_calendar_buttons(offset=0):
 
     return InlineKeyboardMarkup(inline_keyboard=buttons), year, month
 
+# handle arrows for changing months
 @dp.callback_query(CalendarForm.viewing, lambda c: c.data.startswith(("cal_prev", "cal_next")))
 async def navigate_month(callback: CallbackQuery, state: FSMContext):
     offset = int(callback.data.split(":")[1])
@@ -251,15 +341,7 @@ async def navigate_month(callback: CallbackQuery, state: FSMContext):
         print(f"Ошибка редактирования календаря: {e}")
     await callback.answer()
 
-@dp.callback_query(CalendarForm.viewing, lambda c: c.data.startswith("select_day:"))
-async def select_day_callback(callback: CallbackQuery, state: FSMContext):
-    date_str = callback.data.replace("select_day:", "")
-    year, month, day = map(int, date_str.split("-"))
-
-    month_title = calendar.month_name[month]
-    await callback.message.answer(f"📅 Вы выбрали: {day} {month_title}, {year}")
-    await callback.answer()
-
+# cleares all sent messages in broadcast
 @dp.callback_query(lambda c: c.data == "hide_daily_all")
 async def handle_hide_daily_all(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
@@ -279,7 +361,8 @@ async def handle_hide_daily_all(callback: CallbackQuery, state: FSMContext):
         pass
 
     await callback.answer("✅ Все сообщения скрыты")
-
+    
+# helper func for checking if day has broadcasts on it or no
 def check_if_has_content_for_day(year, month, day):
     try:
         conn = sqlite3.connect("found_items_let.db")
@@ -299,9 +382,7 @@ def check_if_has_content_for_day(year, month, day):
         print(f"Ошибка при проверке контента за {date_str}: {e}")
         return False
 
-class AdminForm(StatesGroup):
-    broadcast = State()
-
+# start command
 @dp.message(lambda message: message.text == "/start")
 async def start_handler(message: Message, state: FSMContext):
     conn = sqlite3.connect("found_items_let.db")
@@ -327,6 +408,7 @@ async def start_handler(message: Message, state: FSMContext):
         print(f"Failed to send welcome message: {e}")
         await message.answer(welcome_text, parse_mode=ParseMode.HTML)
 
+# help command
 @dp.message(lambda message: message.text == "/help")
 async def help_command(message: Message):
     help_text = (
@@ -377,6 +459,7 @@ async def help_command(message: Message):
     except Exception as e:
         await message.answer(help_text.replace("<b>","").replace("</b>",""), reply_markup=keyboard)
 
+# more explicit help commands
 @dp.callback_query(lambda c: c.data in ["help_lost", "help_found", "help_notifications", "all_commands"])
 async def handle_help_sections(callback: CallbackQuery):
     section = callback.data.split("_")[1]
@@ -433,7 +516,7 @@ async def handle_help_sections(callback: CallbackQuery):
         print(f"Error updating help text: {e}")
         await callback.answer("Ошибка отображения справки")
 
-
+# admin func to show all messages in db and delete them by button click
 @dp.message(lambda message: message.text == "/showall")
 async def cmd_showall(message: Message, state: FSMContext):
     if message.from_user.id not in ADMIN_IDS:
@@ -454,7 +537,7 @@ async def cmd_showall(message: Message, state: FSMContext):
         try:
             temp_msg = await bot.forward_message(
                 chat_id=message.chat.id,
-                from_chat_id="@lost_and_found_helper",
+                from_chat_id="@help_channel_name",
                 message_id=msg_id
             )
             
@@ -510,7 +593,7 @@ async def cmd_showall(message: Message, state: FSMContext):
         end_list_message=end_list.message_id,
     )
     
-
+# handle admin deletion of item from db
 @dp.callback_query(lambda c: c.data.startswith("admin_delete_"))
 async def handle_admin_delete(callback: CallbackQuery):
     if callback.from_user.id not in ADMIN_IDS:
@@ -547,6 +630,7 @@ async def handle_admin_delete(callback: CallbackQuery):
         await callback.answer(f"❌ Ошибка удаления сообщения: {str(e)}")
         print(f"Error during admin deletion: {e}")
 
+# deletes sent to admin messages
 @dp.callback_query(lambda c: c.data == "admin_cleanup")
 async def handle_admin_cleanup(callback: CallbackQuery, state: FSMContext):
     if callback.from_user.id not in ADMIN_IDS:
@@ -584,6 +668,7 @@ async def handle_admin_cleanup(callback: CallbackQuery, state: FSMContext):
     
     await callback.answer("Очистка закончена")
 
+# admin func to send everyone who used bot a specific message
 @dp.message(lambda message: message.text == "/sendall")
 async def cmd_sendall(message: Message, state: FSMContext):
     if message.from_user.id not in ADMIN_IDS:
@@ -592,6 +677,7 @@ async def cmd_sendall(message: Message, state: FSMContext):
     await message.answer("Отправьте сообщения для всех пользователей:")
     await state.set_state(AdminForm.broadcast)
 
+# proccesses sending message to all users
 @dp.message(AdminForm.broadcast)
 async def process_broadcast(message: Message, state: FSMContext):
     if message.from_user.id not in ADMIN_IDS:
@@ -652,64 +738,7 @@ async def process_broadcast(message: Message, state: FSMContext):
     await message.answer(stats_text)
     await state.clear()
 
-
-class LostForm(StatesGroup):
-    photo = State()
-    category = State()
-    location = State()
-    comments = State()
-
-class EditingForm(StatesGroup):
-    photo = State()
-    category = State()
-    location = State()
-    comments = State()
-
-class SearchState(StatesGroup): 
-    viewing = State()
-
-CATEGORIES = {
-    "daily broadcasts": "🔍 Обход дежурного менеджера",
-    "pants": "👖 Штаны",
-    "jackets": "🧥 Куртки",
-    "sweaters": "🧣 Кофты",
-    "shoes": "👟 Обувь",
-    "bags": "🎒 Сумки",
-    "bagsadv": "🛍️ Сумки с вещами внутри",
-    "hats": "🎩 Головные уборы",
-    "badges": "🎖️ Бейджики",
-    "chargers_electronics": "🔌 Зарядки",
-    "electronics_devices": "💻 Электроника",
-    "accessories": "🕶️ Аксессуары",
-    "sports_gear": "🎾 Спортинвентарь",
-    "money_cards": "💰 Деньги и карты",
-    "tshirts": "👕 Футболки",
-    "winteracc": "🧢 Шапки и 🧤 Перчатки",
-    "bevs": "💧 Фляжки",
-    "other": "📦 Другое"
-}
-
-CATEGORY_DESCRIPTIONS = {
-    "daily broadcasts": "ночной обход / фотографии с ресепшена",
-    "pants": "джинсы / спортивные / шорты",
-    "jackets": "",
-    "sweaters": "толстовки / зипки / футболки",
-    "shoes": "спортивная / неспортивная",
-    "bags": "",
-    "bagsadv": "сумки / шопперы / пакеты с вещами внутри",
-    "hats": "шапки / кепки",
-    "badges": "",
-    "chargers_electronics": "",
-    "electronics_devices": "компьютеры / телефоны / наушники",
-    "accessories": "очки, кольца, ювелирка и тд",
-    "sports_gear": "мячи, ракетки, гантели и тд",
-    "money_cards": "",
-    "tshirts": "футболки / майки",
-    "winteracc": "шапки, перчатки, снуды и тп",
-    "bevs": "фляжки / бутылки",
-    "other": ""
-}
-
+# initialises database (creates a file and builds tables in it)
 def init_db():
     conn = sqlite3.connect("found_items_let.db")
     cursor = conn.cursor()
@@ -740,6 +769,7 @@ def init_db():
     conn.commit()
     conn.close()
 
+# deletes sent to user notification message
 @dp.callback_query(lambda c: c.data.startswith("notif_delete_"))
 async def handle_notification_delete(callback: CallbackQuery):
     msg_id = int(callback.data.split("_")[-1])
@@ -752,12 +782,7 @@ async def handle_notification_delete(callback: CallbackQuery):
     
     await callback.answer("Напоминение спрятано.")
 
-
-class NotificationForm(StatesGroup):
-    action = State()
-    subscribe = State()
-    unsubscribe = State()
-
+# handles notification command
 @dp.message(lambda message: message.text == "/notification")
 async def cmd_notification(message: Message, state: FSMContext):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -769,6 +794,7 @@ async def cmd_notification(message: Message, state: FSMContext):
     await state.update_data(notification_message=message)
     await state.set_state(NotificationForm.action)
 
+# handles subscribe and unsubscribe
 @dp.callback_query(lambda c: c.data in ["notify_subscribe", "notify_unsubscribe"])
 async def handle_notification_action(callback: CallbackQuery, state: FSMContext):
     action = callback.data.split("_")[1]
@@ -832,6 +858,7 @@ async def handle_notification_action(callback: CallbackQuery, state: FSMContext)
         await callback.message.answer("Нажми на категорию для отписки:", reply_markup=keyboard)
         await state.set_state(NotificationForm.unsubscribe)
 
+# extracts category to subscribe from inline query
 @dp.inline_query(lambda q: q.query.startswith("NOTIFY_SUBSCRIBE:"))
 async def inline_subscription_query(inline_query: InlineQuery):
     query = inline_query.query.replace("NOTIFY_SUBSCRIBE:", "").strip().lower()
@@ -851,6 +878,9 @@ async def inline_subscription_query(inline_query: InlineQuery):
     
     await bot.answer_inline_query(inline_query.id, results, cache_time=1)
 
+# finishes subscription proccess:
+#     adds user to db 
+#     sends confirmation 
 @dp.message(NotificationForm.subscribe, lambda m: m.text.startswith("SELECTED_SUB:"))
 async def handle_subscription_selection(message: Message, state: FSMContext):
     raw = message.text.replace("SELECTED_SUB:", "").strip()
@@ -906,7 +936,7 @@ async def handle_subscription_selection(message: Message, state: FSMContext):
     
     await state.clear()
 
-
+# handles unsubscribe (same as subscribe)
 @dp.callback_query(lambda c: c.data.startswith("unsub_"))
 async def handle_unsubscribe(callback: CallbackQuery, state: FSMContext):
     data = callback.data.split("_", 1)[1]
@@ -969,7 +999,7 @@ async def handle_unsubscribe(callback: CallbackQuery, state: FSMContext):
         await callback.answer("Ошибка обновления подписки")
         print(f"Unsubscription error: {e}")
 
-
+# counts items in corresponding category for inline query description
 def get_category_item_count(category_key):
     try:
         conn = sqlite3.connect("found_items_let.db")
@@ -984,7 +1014,7 @@ def get_category_item_count(category_key):
         print(f"Error getting category count: {e}")
         return 0
 
-
+# in lost filter returns all file ids in corresponding time range and category
 def get_message_ids_by_category_and_days(category, max_days_back):
     try:
         cutoff_date = (datetime.now() - timedelta(days=int(max_days_back))).date()
@@ -1007,7 +1037,7 @@ def get_message_ids_by_category_and_days(category, max_days_back):
         print(f"Error fetching filtered items: {e}")
         return []
 
-
+# handle lost command
 @dp.message(lambda message: message.text == "/lost")
 async def cmd_filter(message: Message, state: FSMContext):
     prompt_msg = await message.answer("🔍 Какую категорию ты хочешь увидеть?")
@@ -1023,6 +1053,7 @@ async def cmd_filter(message: Message, state: FSMContext):
     await state.update_data(search_prompt_message=search_msg.message_id)
     await state.set_state(FilterForm.category)
 
+# handle filtering category
 @dp.message(FilterForm.category, lambda m: m.text.startswith("FILTER_CATEGORY:"))
 async def handle_filter_category(message: Message, state: FSMContext):
     raw = message.text.replace("FILTER_CATEGORY:", "").strip()
@@ -1041,7 +1072,7 @@ async def handle_filter_category(message: Message, state: FSMContext):
         await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
     except Exception:
         pass
-
+    # specific calendar opens for daily broadcasts
     if raw == "daily broadcasts":
         keyboard, year, month = generate_calendar_buttons(offset=0)
         title = f"🗓 Выберите день для {calendar.month_name[month]} {year}"
@@ -1053,6 +1084,7 @@ async def handle_filter_category(message: Message, state: FSMContext):
         await state.update_data(days_message=days_msg.message_id)
         await state.set_state(FilterForm.days)
 
+# asks for time range
 @dp.message(FilterForm.days)
 async def handle_filter_days(message: Message, state: FSMContext):
     days = message.text.strip()
@@ -1084,7 +1116,7 @@ async def handle_filter_days(message: Message, state: FSMContext):
         try:
             sent_msg = await bot.forward_message(
                 chat_id=message.chat.id,
-                from_chat_id="@lost_and_found_helper",
+                from_chat_id="@help_channel_name",
                 message_id=msg_id
             )
             sent_messages.append(sent_msg.message_id)
@@ -1103,6 +1135,7 @@ async def handle_filter_days(message: Message, state: FSMContext):
     )
     await state.set_state(SearchState.viewing)
 
+# hides all sent orders in lost func
 @dp.callback_query(lambda c: c.data == "hide_orders")
 async def handle_hide_orders(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
@@ -1124,18 +1157,21 @@ async def handle_hide_orders(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer("Все сообщения спрятаны")
 
+# handles found func
 @dp.message(lambda message: message.text == "/found")
 async def cmd_lost(message: Message, state: FSMContext):
     await state.set_state(LostForm.photo)
     msg = await message.answer("📸 Пожалуйста отправьте фото.")
     await state.update_data(last_bot_message=msg.message_id)
 
+# asks for photo
 @dp.callback_query(lambda c: c.data == "makeOrder")
 async def start_make_order(callback: CallbackQuery, state: FSMContext):
     await state.set_state(LostForm.photo)
     await callback.message.edit_text("📸 Пожалуйста отправьте фото.")
     await state.update_data(last_bot_message=callback.message.message_id)
 
+# receives photo and cleans chat, switches to choosing category
 @dp.message(LostForm.photo)
 async def receive_photo(message: Message, state: FSMContext):
     if not message.photo:
@@ -1167,6 +1203,7 @@ async def receive_photo(message: Message, state: FSMContext):
     await state.update_data(last_bot_message=msg.message_id)
     await state.set_state(LostForm.category)
 
+# handles inline query for choosing category
 @dp.inline_query()
 async def inline_query_handler(inline_query: InlineQuery):
     query = inline_query.query.strip().lower()
@@ -1208,6 +1245,7 @@ async def inline_query_handler(inline_query: InlineQuery):
 
     await bot.answer_inline_query(inline_query.id, results, cache_time=1)
 
+# handles choosing category
 @dp.message(LostForm.category, lambda m: m.text.startswith("SELECTED_CATEGORY:"))
 async def handle_category_selection(message: Message, state: FSMContext):
     raw = message.text.replace("SELECTED_CATEGORY:", "").strip()
@@ -1230,7 +1268,7 @@ async def handle_category_selection(message: Message, state: FSMContext):
 
     await show_summary(message, data, state)
 
-
+# shows summary
 async def show_summary(message: Message, data: dict, state: FSMContext):
     summary_msg_id = data.get('summary_message')
     buttons_msg_id = data.get('buttons_message')
@@ -1293,6 +1331,7 @@ async def show_summary(message: Message, data: dict, state: FSMContext):
         buttons_message=new_buttons_msg.message_id
     )
 
+# handles editing for each action
 @dp.callback_query(lambda c: c.data.startswith("edit_"))
 async def handle_edit(callback: CallbackQuery, state: FSMContext):
     action = callback.data.replace("edit_", "")
@@ -1338,6 +1377,7 @@ async def handle_edit(callback: CallbackQuery, state: FSMContext):
 
     await callback.answer()
 
+# updates photo
 @dp.message(EditingForm.photo)
 async def update_photo(message: Message, state: FSMContext):
     if not message.photo:
@@ -1361,6 +1401,7 @@ async def update_photo(message: Message, state: FSMContext):
 
     await show_summary(message, data, state)
 
+# updates category
 @dp.message(EditingForm.category, lambda m: m.text.startswith("SELECTED_CATEGORY:"))
 async def update_category(message: Message, state: FSMContext):
     raw = message.text.replace("SELECTED_CATEGORY:", "").strip()
@@ -1382,6 +1423,7 @@ async def update_category(message: Message, state: FSMContext):
 
     await show_summary(message, data, state)
 
+# updates location
 @dp.message(EditingForm.location)
 async def update_location(message: Message, state: FSMContext):
     if message.text.strip() == "-":
@@ -1405,6 +1447,7 @@ async def update_location(message: Message, state: FSMContext):
 
     await show_summary(message, data, state)
 
+# updates comments
 @dp.message(EditingForm.comments)
 async def update_comments(message: Message, state: FSMContext):
     if message.text.strip() == "-":
@@ -1428,6 +1471,7 @@ async def update_comments(message: Message, state: FSMContext):
 
     await show_summary(message, data, state)
 
+# confirm submission handling
 @dp.callback_query(lambda c: c.data == "confirm_submit")
 async def confirm_submission(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
@@ -1440,7 +1484,7 @@ async def confirm_submission(callback: CallbackQuery, state: FSMContext):
     
     try:
         sent_msg = await bot.send_photo(
-            chat_id="@lost_and_found_helper", 
+            chat_id="@help_channel_name", 
             photo=data["photo"], 
             caption=summary_for_lost
         )
@@ -1526,7 +1570,6 @@ async def delete_after_delay(chat_id, message_id, delay):
         await bot.delete_message(chat_id=chat_id, message_id=message_id)
     except Exception as e:
         print(f"Failed to auto-delete message {message_id}: {e}")
-
 
 async def main():
     await dp.start_polling(bot)
