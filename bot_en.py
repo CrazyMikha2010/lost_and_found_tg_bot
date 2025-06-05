@@ -28,7 +28,7 @@ from config_reader import config
 bot = Bot(token=config.bot_token.get_secret_value()) # you can paste bot token here
 dp = Dispatcher()
 
-ADMIN_IDS = [1793679875]
+ADMIN_IDS = [0123456789, 9876543210]
 ADMIN_EMOJI = "👮‍♂️"
 
 
@@ -37,7 +37,7 @@ class AdminForm(StatesGroup):
 
 @dp.message(lambda message: message.text == "/start")
 async def start_handler(message: Message, state: FSMContext):
-    conn = sqlite3.connect("found_items.db")
+    conn = sqlite3.connect("your_database_name.db")
     cursor = conn.cursor()
     cursor.execute('INSERT OR IGNORE INTO users (user_id) VALUES (?)', 
                   (message.from_user.id,))
@@ -170,7 +170,7 @@ async def cmd_showall(message: Message, state: FSMContext):
     if message.from_user.id not in ADMIN_IDS:
         return
     
-    conn = sqlite3.connect("found_items.db")
+    conn = sqlite3.connect("your_database_name.db")
     cursor = conn.cursor()
     cursor.execute('SELECT message_id, category, date FROM found_items ORDER BY date DESC')
     
@@ -185,7 +185,7 @@ async def cmd_showall(message: Message, state: FSMContext):
         try:
             temp_msg = await bot.forward_message(
                 chat_id=message.chat.id,
-                from_chat_id="@lost_and_found_helper",
+                from_chat_id="@help_channel_name",
                 message_id=msg_id
             )
             
@@ -251,7 +251,7 @@ async def handle_admin_delete(callback: CallbackQuery):
     msg_id = callback.data.split("_")[2]
 
     try:
-        conn = sqlite3.connect("found_items.db")
+        conn = sqlite3.connect("your_database_name.db")
         cursor = conn.cursor()
         cursor.execute('DELETE FROM found_items WHERE message_id = ?', (msg_id,))
         conn.commit()
@@ -328,7 +328,7 @@ async def process_broadcast(message: Message, state: FSMContext):
     if message.from_user.id not in ADMIN_IDS:
         return
 
-    conn = sqlite3.connect("found_items.db")
+    conn = sqlite3.connect("your_database_name.db")
     cursor = conn.cursor()
     cursor.execute('SELECT user_id FROM users')
     users = [row[0] for row in cursor.fetchall()]
@@ -436,7 +436,7 @@ CATEGORY_DESCRIPTIONS = {
 }
 
 def init_db():
-    conn = sqlite3.connect("found_items.db")
+    conn = sqlite3.connect("your_database_name.db")
     cursor = conn.cursor()
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS found_items (
@@ -521,7 +521,7 @@ async def handle_notification_action(callback: CallbackQuery, state: FSMContext)
         await state.update_data(search_prompt_message=search_prompt_msg.message_id)
         await state.set_state(NotificationForm.subscribe)
     else:
-        conn = sqlite3.connect("found_items.db")
+        conn = sqlite3.connect("your_database_name.db")
         cursor = conn.cursor()
         cursor.execute('''
             SELECT DISTINCT category FROM user_subscriptions
@@ -588,7 +588,7 @@ async def handle_subscription_selection(message: Message, state: FSMContext):
     user_id = message.from_user.id
     
     try:
-        conn = sqlite3.connect("found_items.db")
+        conn = sqlite3.connect("your_database_name.db")
         cursor = conn.cursor()
         cursor.execute('''
             INSERT OR IGNORE INTO user_subscriptions (user_id, category)
@@ -651,7 +651,7 @@ async def handle_unsubscribe(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     
     try:
-        conn = sqlite3.connect("found_items.db")
+        conn = sqlite3.connect("your_database_name.db")
         cursor = conn.cursor()
         cursor.execute('''
             DELETE FROM user_subscriptions
@@ -660,7 +660,7 @@ async def handle_unsubscribe(callback: CallbackQuery, state: FSMContext):
         conn.commit()
         conn.close()
         
-        conn = sqlite3.connect("found_items.db")
+        conn = sqlite3.connect("your_database_name.db")
         cursor = conn.cursor()
         cursor.execute('''
             SELECT DISTINCT category FROM user_subscriptions
@@ -697,7 +697,7 @@ async def handle_unsubscribe(callback: CallbackQuery, state: FSMContext):
 
 def get_category_item_count(category_key):
     try:
-        conn = sqlite3.connect("found_items.db")
+        conn = sqlite3.connect("your_database_name.db")
         cursor = conn.cursor()
         cursor.execute('''
             SELECT COUNT(*) FROM found_items WHERE category = ?
@@ -714,7 +714,7 @@ def get_message_ids_by_category_and_days(category, max_days_back):
     try:
         cutoff_date = (datetime.now() - timedelta(days=int(max_days_back))).date()
         
-        conn = sqlite3.connect("found_items.db")
+        conn = sqlite3.connect("your_database_name.db")
         cursor = conn.cursor()
         cursor.execute('''
             SELECT message_id 
@@ -802,7 +802,7 @@ async def handle_filter_days(message: Message, state: FSMContext):
         try:
             sent_msg = await bot.forward_message(
                 chat_id=message.chat.id,
-                from_chat_id="@lost_and_found_helper",
+                from_chat_id="@help_channel_name",
                 message_id=msg_id
             )
             sent_messages.append(sent_msg.message_id)
@@ -1155,12 +1155,12 @@ async def confirm_submission(callback: CallbackQuery, state: FSMContext):
     
     try:
         sent_msg = await bot.send_photo(
-            chat_id="@lost_and_found_helper", 
+            chat_id="@help_channel_name", 
             photo=data["photo"], 
             caption=summary_for_lost
         )
         
-        conn = sqlite3.connect("found_items.db")
+        conn = sqlite3.connect("your_database_name.db")
         cursor = conn.cursor()
         cursor.execute('''
             INSERT INTO found_items (message_id, category, date)
@@ -1169,7 +1169,7 @@ async def confirm_submission(callback: CallbackQuery, state: FSMContext):
         conn.commit()
         conn.close()
         
-        conn = sqlite3.connect("found_items.db")
+        conn = sqlite3.connect("your_database_name.db")
         cursor = conn.cursor()
         cursor.execute('''
             SELECT DISTINCT user_id FROM user_subscriptions
