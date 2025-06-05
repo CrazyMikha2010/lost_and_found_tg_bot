@@ -124,7 +124,7 @@ def get_broadcasts_by_date(year, month, day):
         date_str = f"{year}-{month:02d}-{day:02d}"
 
         cursor.execute('''
-            SELECT message_id FROM found_items_let
+            SELECT message_id FROM found_items
             WHERE category = "daily broadcasts"
               AND DATE(date) = DATE(?)
             ORDER BY date DESC
@@ -240,7 +240,7 @@ async def handle_broadcast_message(message: Message, state: FSMContext):
             caption=f"📢 Daily Broadcast\n{caption}\n📅 {datetime.now().date()}"
         )
         cursor.execute('''
-            INSERT INTO found_items_let (category, message_id, date)
+            INSERT INTO found_items (category, message_id, date)
             VALUES (?, ?, ?)
         ''', (
             "daily broadcasts",
@@ -370,7 +370,7 @@ def check_if_has_content_for_day(year, month, day):
         date_str = f"{year}-{month:02d}-{day:02d}"
 
         cursor.execute('''
-            SELECT COUNT(*) FROM found_items_let
+            SELECT COUNT(*) FROM found_items
             WHERE category = "daily broadcasts"
               AND DATE(date) = DATE(?)
         ''', (date_str,))
@@ -524,7 +524,7 @@ async def cmd_showall(message: Message, state: FSMContext):
     
     conn = sqlite3.connect("yout_databse_name.db")
     cursor = conn.cursor()
-    cursor.execute('SELECT message_id, category, date FROM found_items_let ORDER BY date DESC')
+    cursor.execute('SELECT message_id, category, date FROM found_items ORDER BY date DESC')
     
     results = cursor.fetchall()
     conn.close()
@@ -605,7 +605,7 @@ async def handle_admin_delete(callback: CallbackQuery):
     try:
         conn = sqlite3.connect("yout_databse_name.db")
         cursor = conn.cursor()
-        cursor.execute('DELETE FROM found_items_let WHERE message_id = ?', (msg_id,))
+        cursor.execute('DELETE FROM found_items WHERE message_id = ?', (msg_id,))
         conn.commit()
         conn.close()
 
@@ -743,7 +743,7 @@ def init_db():
     conn = sqlite3.connect("yout_databse_name.db")
     cursor = conn.cursor()
     cursor.execute('''
-        CREATE TABLE IF NOT EXISTS found_items_let (
+        CREATE TABLE IF NOT EXISTS found_items (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             category TEXT NOT NULL,
             message_id TEXT NOT NULL,
@@ -1005,7 +1005,7 @@ def get_category_item_count(category_key):
         conn = sqlite3.connect("yout_databse_name.db")
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT COUNT(*) FROM found_items_let WHERE category = ?
+            SELECT COUNT(*) FROM found_items WHERE category = ?
         ''', (category_key,))
         count = cursor.fetchone()[0]
         conn.close()
@@ -1023,7 +1023,7 @@ def get_message_ids_by_category_and_days(category, max_days_back):
         cursor = conn.cursor()
         cursor.execute('''
             SELECT message_id 
-            FROM found_items_let
+            FROM found_items
             WHERE category = ?
               AND DATE(date) >= DATE(?)
             ORDER BY date DESC
@@ -1492,7 +1492,7 @@ async def confirm_submission(callback: CallbackQuery, state: FSMContext):
         conn = sqlite3.connect("yout_databse_name.db")
         cursor = conn.cursor()
         cursor.execute('''
-            INSERT INTO found_items_let (message_id, category, date)
+            INSERT INTO found_items (message_id, category, date)
             VALUES (?, ?, ?)
         ''', (sent_msg.message_id, category_key, datetime.now()))
         conn.commit()
