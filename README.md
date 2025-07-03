@@ -6,6 +6,8 @@ Lots of schools face a problem with not having organised system for finding lost
 
 if you'll find my project interestnig or will end up using or **forking it**, or if you'll have any problems, questions or advice - text me in telegram [@miha19652010](https://t.me/miha19652010) or via mail mikhail.mezh@icloud.com
 
+<img src="images/poster.MOV" width="300" />
+
 ## Functionality
 
 ### User commands
