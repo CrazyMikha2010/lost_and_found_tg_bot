@@ -25,57 +25,177 @@ from datetime import datetime, timedelta
 import calendar
 
 
-bot = Bot("YOUR BOT TOKEN HERE")
+bot = Bot("8069679804:AAHZPe9ZFaSXf5_Hy19c3DISMD-kHV4Vunw")
 dp = Dispatcher()
 
 # you can add your own categories, here's copy and paste form "": "",
 CATEGORIES = {
     "daily broadcasts": "🔍 Обход дежурного менеджера",
-    "pants": "👖 Штаны",
+    "pants": "👖 Штаны и 🩳 Шорты",
     "jackets": "🧥 Куртки",
     "sweaters": "🧣 Кофты",
     "shoes": "👟 Обувь",
-    "bags": "🎒 Сумки",
-    "bagsadv": "🛍️ Сумки с вещами внутри",
+    "bags": "🛍️ Сумки и 🎒 Рюкзаки",
+    "stationery": "📐 Канцтовары",
     "hats": "🎩 Головные уборы",
     "badges": "🎖️ Бейджики",
     "chargers_electronics": "🔌 Зарядки",
     "electronics_devices": "💻 Электроника",
-    "accessories": "🕶️ Аксессуары",
+    "accessories": "🕶️ Аксессуары и 💍 Бижутерия",
+    "hair_tie": "🎀 Резинки / Заколки для волос",
     "sports_gear": "🎾 Спортинвентарь",
     "money_cards": "💰 Деньги и карты",
     "tshirts": "👕 Футболки",
-    "winteracc": "🧢 Шапки и 🧤 Перчатки",
+    "winteracc": "🧣 Шарфы и 🧤 Перчатки",
     "bevs": "💧 Фляжки",
+    "beauty_prod": "💄 Косметика",
     "other": "📦 Другое"
 }
 
 CATEGORY_DESCRIPTIONS = {
     "daily broadcasts": "ночной обход / фотографии с ресепшена",
     "pants": "джинсы / спортивные / шорты",
-    "jackets": "",
+    "jackets": "ветровки / бомберы",
     "sweaters": "толстовки / зипки / футболки",
     "shoes": "спортивная / неспортивная",
-    "bags": "",
-    "bagsadv": "сумки / шопперы / пакеты с вещами внутри",
-    "hats": "шапки / кепки",
+    "bags": "шопперы / пакеты с вещами внутри / портфели",
+    "stationery": "ручки / линейки / ластики / точилки",
+    "hats": "шапки / кепки / шляпы / банданы",
     "badges": "",
-    "chargers_electronics": "",
+    "chargers_electronics": "провода / вилки",
     "electronics_devices": "компьютеры / телефоны / наушники",
-    "accessories": "очки, кольца, ювелирка и тд",
-    "sports_gear": "мячи, ракетки, гантели и тд",
-    "money_cards": "",
+    "accessories": "очки / ювелирка / брелки / брошки",
+    "hair_tie": "резинки / ободки",
+    "sports_gear": "мячи / ракетки / гантели",
+    "money_cards": "тройка / банковская / купюры",
     "tshirts": "футболки / майки",
-    "winteracc": "шапки, перчатки, снуды и тп",
+    "winteracc": "перчатки / снуды / шарфы",
     "bevs": "фляжки / бутылки",
+    "beauty_prod": "помада / тушь / тени / блеск для губ / крем / румяна / спонж / пудра",
     "other": ""
+}
+
+LOCATIONS = {
+    "reception": "Ресепшен 📍",
+    "white_shelves_1f": "Белые полки 1эт ⚪️",
+    "white_shelves_b1": "Белые полки -1эт ⚪️",
+    "sport_storage": "Склад 📦",
+    "study_block_3f": "Учблок 3эт 📖",
+    "language_department": "Кафедра языков 🌍",
+    "library": "Библиотека 📚",
+    "winter_garden": "Зимний сад 🌿",
+    "big_academic": "Большой академ 🎓",
+    "meeting_rooms": "Переговорки 💬",
+    "other_3f": "Другое 3эт ❓",
+    "study_block_2f": "Учблок 2эт 📖",
+    "psychologists_office": "Кабинет психологов 🧠",
+    "ficus_room": "Фикусная 🌱",
+    "gray_sofas": "Серые диваны ⬜️",
+    "cafe_2f": "Кафе 2эт ☕️",
+    "sport_block_balconies": "Балконы спортблока 🏟",
+    "pool": "Бассейн 🏊",
+    "arts": "Артс 🎨",
+    "yellow_sofas": "Желтые диваны 🟨",
+    "lecture_hall": "Лекторий 🎤",
+    "big_stage": "Большая сцена 🎭",
+    "red_sofas": "Красные диваны 🟥",
+    "blue_sofas_stage": "Синие диваны у сцены 🟦",
+    "main_wardrobe": "Основной гардероб 🧥",
+    "south_wardrobe": "Южный гардероб 🧣",
+    "small_gym": "Малый спортивный зал 🏀",
+    "big_gym": "Большой спортивный зал ⚽️",
+    "gym": "Тренажерный зал 💪🏋", 
+    "martial_arts": "Зал единоборств 🥊", 
+    "aerobics": "Зал аэробики 🧘‍♀️",
+    "upper_canteen": "Верхняя столовая 🍽",
+    "blue_sofas_canteen": "Синие диваны у столовой 🟦",
+    "science_1f": "Сайнс 1эт 🔬",
+    "lower_canteen": "Нижняя столовая / кафе 🍴",
+    "medical_block": "Медблок 🏥",
+    "science_b1": "Сайнс -1эт 🔭",
+    "boarding_transition": "Переходы в бординг 🚶",
+    "hub": "Хаб 🚀",
+    "fablab": "Фаблаб 🛠",
+    "tennis_courts": "Теннисные корты 🎾",
+    "football_field": "Футбольное поле ⚽️",
+    "basketball_court": "Баскетбольный корт 🏀",
+    "field_bars": "Турники у поля 💪",
+    "volleyball_court": "Воллейбольный корт 🏐",
+    "court_3_4": "Корт 3/4 дом 🏀⚽️",
+    "court_5_6": "Корт 5/6 дом 🏀⚽️",
+    "court_7_8": "Корт 7/8 дом 🏀⚽️",
+    "swings": "Качели за хабом 🌳",
+    "hub_bars": "Турники за хабом 💪",
+    "amphitheater": "Амфитеатр 🏛",
+    "forest": "Лес 🌲",
+    "outside": "Напротив школы 🏫",
+    "bus": "Автобус 🚌",
+    "other": "Другое ❓"
+}
+
+LOCATION_DESCRIPTIONS = {
+    "reception": "Reception",
+    "white_shelves_1f": "White shelves 1st floor",
+    "white_shelves_b1": "White shelves basement",
+    "sport_storage": "Storage",
+    "study_block_3f": "Study block 3rd floor",
+    "language_department": "Language department",
+    "library": "Library",
+    "winter_garden": "Winter garden",
+    "big_academic": "Big academic hall",
+    "meeting_rooms": "Meeting rooms",
+    "other_3f": "Other 3rd floor",
+    "study_block_2f": "Study block 2nd floor",
+    "psychologists_office": "Psychologists' office",
+    "ficus_room": "Ficus room",
+    "gray_sofas": "Gray sofas",
+    "cafe_2f": "Cafe 2nd floor",
+    "sport_block_balconies": "Sports block balconies",
+    "pool": "Pool",
+    "arts": "Arts",
+    "yellow_sofas": "Yellow sofas",
+    "lecture_hall": "Lecture hall",
+    "big_stage": "Big stage",
+    "red_sofas": "Red sofas",
+    "blue_sofas_stage": "Blue sofas by stage",
+    "main_wardrobe": "Main wardrobe",
+    "south_wardrobe": "South wardrobe",
+    "small_gym": "Small gym",
+    "big_gym": "Big gym",
+    "gym": "Gym",
+    "martial_arts": "Martial arts hall",
+    "aerobics": "Aerobics room",
+    "upper_canteen": "Upper canteen",
+    "blue_sofas_canteen": "Blue sofas by canteen",
+    "science_1f": "Science 1st floor",
+    "lower_canteen": "Lower canteen / cafe",
+    "medical_block": "Medical block",
+    "science_b1": "Science basement",
+    "boarding_transition": "Boarding transitions",
+    "hub": "Hub",
+    "fablab": "Fablab",
+    "tennis_courts": "Tennis courts",
+    "football_field": "Football field",
+    "basketball_court": "Basketball court",
+    "field_bars": "Bars by field",
+    "volleyball_court": "Volleyball court",
+    "court_3_4": "Court 3/4 house",
+    "court_5_6": "Court 5/6 house",
+    "court_7_8": "Court 7/8 house",
+    "swings": "Swings behind hub",
+    "hub_bars": "Bars behind hub",
+    "amphitheater": "Amphitheater",
+    "forest": "Forest",
+    "outside": "Opposite the school",
+    "bus": "Bus",
+    "other": "Other"
 }
 
 """
 admins have more commands to use, so add their ids to list
 to get id, text @getmyid_bot and paste code after <<Your user ID:>>
 """
-ADMIN_IDS = set([0123456789, 9876543210])
+ADMIN_IDS = set(["1793679875", "7335687469", "1667964657"])
 ADMIN_EMOJI = "👮‍♂️"
 
 def is_admin(user_id):
@@ -1243,7 +1363,15 @@ async def inline_query_handler(inline_query: InlineQuery):
         if query in full_text:
             results.append(result)
 
-    await bot.answer_inline_query(inline_query.id, results, cache_time=1)
+    MAX_RESULTS = 50
+
+    offset = int(inline_query.offset) if inline_query.offset else 0
+    next_offset = offset + MAX_RESULTS
+
+    current_results = results[offset:offset + MAX_RESULTS]
+    next_offset = str(next_offset) if next_offset < len(results) else None
+
+    await bot.answer_inline_query(inline_query.id, results=current_results, next_offset=next_offset, cache_time=1, is_personal=True)
 
 # handles choosing category
 @dp.message(LostForm.category, lambda m: m.text.startswith("SELECTED_CATEGORY:"))
