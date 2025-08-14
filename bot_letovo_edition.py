@@ -25,7 +25,7 @@ from datetime import datetime, timedelta
 import calendar
 
 
-bot = Bot("8069679804:AAHZPe9ZFaSXf5_Hy19c3DISMD-kHV4Vunw")
+bot = Bot("")
 dp = Dispatcher()
 
 # you can add your own categories, here's copy and paste form "": "",
