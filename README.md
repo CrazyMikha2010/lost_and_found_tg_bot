@@ -1,4 +1,4 @@
-#⚙️ im improving letovo edition bot now, thus it may not work as described
+### ⚙️ im improving letovo edition bot now, thus it may not work as described
 
 # Lost&Found Telegram Bot
 
