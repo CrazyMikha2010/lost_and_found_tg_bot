@@ -1,3 +1,5 @@
+#⚙️ im improving letovo edition bot now, thus it may not work as described
+
 # Lost&Found Telegram Bot
 
 Lots of schools face a problem with not having organised system for finding lost things. Our project proposes solution to it - Lost&Found bot which helps with filtering, storing and managing everything.
