@@ -195,7 +195,7 @@ LOCATION_DESCRIPTIONS = {
 admins have more commands to use, so add their ids to list
 to get id, text @getmyid_bot and paste code after <<Your user ID:>>
 """
-ADMIN_IDS = set(["1793679875", "7335687469", "1667964657"])
+ADMIN_IDS = set([123456789, 987654321])
 ADMIN_EMOJI = "👮‍♂️"
 
 def is_admin(user_id):
@@ -239,7 +239,7 @@ class NotificationForm(StatesGroup):
 # gets all broadcasts made in corresponding date
 def get_broadcasts_by_date(year, month, day):
     try:
-        conn = sqlite3.connect("yout_databse_name.db")
+        conn = sqlite3.connect("found_items_letovo.db")
         cursor = conn.cursor()
         date_str = f"{year}-{month:02d}-{day:02d}"
 
@@ -275,7 +275,7 @@ async def select_day_callback(callback: CallbackQuery, state: FSMContext):
         try:
             sent_msg = await bot.forward_message(
                 chat_id=callback.message.chat.id,
-                from_chat_id="@help_channel_name",
+                from_chat_id="@rgwojihbftyb",
                 message_id=msg_id
             )
             sent_messages.append(sent_msg.message_id)
@@ -350,12 +350,12 @@ async def handle_broadcast_message(message: Message, state: FSMContext):
     photo = message.photo[-1].file_id
     caption = message.caption or "---"
 
-    conn = sqlite3.connect("yout_databse_name.db")  
+    conn = sqlite3.connect("found_items_letovo.db")  
     cursor = conn.cursor()
 
     try:
         sent_msg = await bot.send_photo(
-            chat_id="@help_channel_name",
+            chat_id="@rgwojihbftyb",
             photo=photo,
             caption=f"📢 Daily Broadcast\n{caption}\n📅 {datetime.now().date()}"
         )
@@ -485,7 +485,7 @@ async def handle_hide_daily_all(callback: CallbackQuery, state: FSMContext):
 # helper func for checking if day has broadcasts on it or no
 def check_if_has_content_for_day(year, month, day):
     try:
-        conn = sqlite3.connect("yout_databse_name.db")
+        conn = sqlite3.connect("found_items_letovo.db")
         cursor = conn.cursor()
         date_str = f"{year}-{month:02d}-{day:02d}"
 
@@ -505,7 +505,7 @@ def check_if_has_content_for_day(year, month, day):
 # start command
 @dp.message(lambda message: message.text == "/start")
 async def start_handler(message: Message, state: FSMContext):
-    conn = sqlite3.connect("yout_databse_name.db")
+    conn = sqlite3.connect("found_items_letovo.db")
     cursor = conn.cursor()
     cursor.execute('INSERT OR IGNORE INTO users (user_id) VALUES (?)', 
                   (message.from_user.id,))
@@ -642,7 +642,7 @@ async def cmd_showall(message: Message, state: FSMContext):
     if message.from_user.id not in ADMIN_IDS:
         return
     
-    conn = sqlite3.connect("yout_databse_name.db")
+    conn = sqlite3.connect("found_items_letovo.db")
     cursor = conn.cursor()
     cursor.execute('SELECT message_id, category, date FROM found_items ORDER BY date DESC')
     
@@ -657,7 +657,7 @@ async def cmd_showall(message: Message, state: FSMContext):
         try:
             temp_msg = await bot.forward_message(
                 chat_id=message.chat.id,
-                from_chat_id="@help_channel_name",
+                from_chat_id="@rgwojihbftyb",
                 message_id=msg_id
             )
             
@@ -723,7 +723,7 @@ async def handle_admin_delete(callback: CallbackQuery):
     msg_id = callback.data.split("_")[2]
 
     try:
-        conn = sqlite3.connect("yout_databse_name.db")
+        conn = sqlite3.connect("found_items_letovo.db")
         cursor = conn.cursor()
         cursor.execute('DELETE FROM found_items WHERE message_id = ?', (msg_id,))
         conn.commit()
@@ -803,7 +803,7 @@ async def process_broadcast(message: Message, state: FSMContext):
     if message.from_user.id not in ADMIN_IDS:
         return
 
-    conn = sqlite3.connect("yout_databse_name.db")
+    conn = sqlite3.connect("found_items_letovo.db")
     cursor = conn.cursor()
     cursor.execute('SELECT user_id FROM users')
     users = [row[0] for row in cursor.fetchall()]
@@ -860,7 +860,7 @@ async def process_broadcast(message: Message, state: FSMContext):
 
 # initialises database (creates a file and builds tables in it)
 def init_db():
-    conn = sqlite3.connect("yout_databse_name.db")
+    conn = sqlite3.connect("found_items_letovo.db")
     cursor = conn.cursor()
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS found_items (
@@ -942,7 +942,7 @@ async def handle_notification_action(callback: CallbackQuery, state: FSMContext)
         await state.update_data(search_prompt_message=search_prompt_msg.message_id)
         await state.set_state(NotificationForm.subscribe)
     else:
-        conn = sqlite3.connect("yout_databse_name.db")
+        conn = sqlite3.connect("found_items_letovo.db")
         cursor = conn.cursor()
         cursor.execute('''
             SELECT DISTINCT category FROM user_subscriptions
@@ -1013,7 +1013,7 @@ async def handle_subscription_selection(message: Message, state: FSMContext):
     user_id = message.from_user.id
     
     try:
-        conn = sqlite3.connect("yout_databse_name.db")
+        conn = sqlite3.connect("found_items_letovo.db")
         cursor = conn.cursor()
         cursor.execute('''
             INSERT OR IGNORE INTO user_subscriptions (user_id, category)
@@ -1076,7 +1076,7 @@ async def handle_unsubscribe(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     
     try:
-        conn = sqlite3.connect("yout_databse_name.db")
+        conn = sqlite3.connect("found_items_letovo.db")
         cursor = conn.cursor()
         cursor.execute('''
             DELETE FROM user_subscriptions
@@ -1085,7 +1085,7 @@ async def handle_unsubscribe(callback: CallbackQuery, state: FSMContext):
         conn.commit()
         conn.close()
         
-        conn = sqlite3.connect("yout_databse_name.db")
+        conn = sqlite3.connect("found_items_letovo.db")
         cursor = conn.cursor()
         cursor.execute('''
             SELECT DISTINCT category FROM user_subscriptions
@@ -1122,7 +1122,7 @@ async def handle_unsubscribe(callback: CallbackQuery, state: FSMContext):
 # counts items in corresponding category for inline query description
 def get_category_item_count(category_key):
     try:
-        conn = sqlite3.connect("yout_databse_name.db")
+        conn = sqlite3.connect("found_items_letovo.db")
         cursor = conn.cursor()
         cursor.execute('''
             SELECT COUNT(*) FROM found_items WHERE category = ?
@@ -1139,7 +1139,7 @@ def get_message_ids_by_category_and_days(category, max_days_back):
     try:
         cutoff_date = (datetime.now() - timedelta(days=int(max_days_back))).date()
         
-        conn = sqlite3.connect("yout_databse_name.db")
+        conn = sqlite3.connect("found_items_letovo.db")
         cursor = conn.cursor()
         cursor.execute('''
             SELECT message_id 
@@ -1236,7 +1236,7 @@ async def handle_filter_days(message: Message, state: FSMContext):
         try:
             sent_msg = await bot.forward_message(
                 chat_id=message.chat.id,
-                from_chat_id="@help_channel_name",
+                from_chat_id="@rgwojihbftyb",
                 message_id=msg_id
             )
             sent_messages.append(sent_msg.message_id)
@@ -1333,35 +1333,68 @@ async def inline_query_handler(inline_query: InlineQuery):
     current_state = await state.get_state()
     
     is_filter_context = current_state == "FilterForm:category"
-
-    for key, title in CATEGORIES.items():
-        if is_filter_context:
-            count = get_category_item_count(key)
-            if count == 0:
-                continue
+    is_location_selection = "location" in query or current_state == "LostForm:location"
+    is_location_editing = current_state == "EditingForm:location"
+    
+    if is_location_editing:
+        clean_query = query.replace("location", "").strip()
+        for key, title in LOCATIONS.items():
+            description = LOCATION_DESCRIPTIONS.get(key, "")
             result = InlineQueryResultArticle(
-                id=key,
+                id=f"loc_{key}",
                 title=title,
                 input_message_content=InputTextMessageContent(
-                    message_text=f"FILTER_CATEGORY:{key}"
-                ),
-                description=f"{count} items"
-            )
-        else:
-            if key == "daily broadcasts":
-                continue
-            description = CATEGORY_DESCRIPTIONS.get(key, "")
-            result = InlineQueryResultArticle(
-                id=key,
-                title=title,
-                input_message_content=InputTextMessageContent(
-                    message_text=f"SELECTED_CATEGORY:{key}"
+                    message_text=f"SELECTED_LOCATION:{key}"
                 ),
                 description=description
             )
-        full_text = (title + " " + result.description).lower()
-        if query in full_text:
-            results.append(result)
+            full_text = (title + " " + description).lower()
+            if not clean_query or clean_query in full_text:
+                results.append(result)
+    elif is_location_selection:
+        clean_query = query.replace("location", "").strip()
+        for key, title in LOCATIONS.items():
+            description = LOCATION_DESCRIPTIONS.get(key, "")
+            result = InlineQueryResultArticle(
+                id=f"loc_{key}",
+                title=title,
+                input_message_content=InputTextMessageContent(
+                    message_text=f"SELECTED_LOCATION:{key}"
+                ),
+                description=description
+            )
+            full_text = (title + " " + description).lower()
+            if not clean_query or clean_query in full_text:
+                results.append(result)
+    else:
+        for key, title in CATEGORIES.items():
+            if is_filter_context:
+                count = get_category_item_count(key)
+                if count == 0:
+                    continue
+                result = InlineQueryResultArticle(
+                    id=key,
+                    title=title,
+                    input_message_content=InputTextMessageContent(
+                        message_text=f"FILTER_CATEGORY:{key}"
+                    ),
+                    description=f"{count} items"
+                )
+            else:
+                if key == "daily broadcasts":
+                    continue
+                description = CATEGORY_DESCRIPTIONS.get(key, "")
+                result = InlineQueryResultArticle(
+                    id=key,
+                    title=title,
+                    input_message_content=InputTextMessageContent(
+                        message_text=f"SELECTED_CATEGORY:{key}"
+                    ),
+                    description=description
+                )
+            full_text = (title + " " + result.description).lower()
+            if query in full_text:
+                results.append(result)
 
     MAX_RESULTS = 50
 
@@ -1380,6 +1413,36 @@ async def handle_category_selection(message: Message, state: FSMContext):
     category_name = CATEGORIES.get(raw, "Unknown")
 
     await state.update_data(category=category_name)
+    data = await state.get_data()
+
+    last_msg_id = data.get('last_bot_message')
+    if last_msg_id:
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=last_msg_id)
+        except Exception:
+            pass
+
+    try:
+        await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+    except Exception:
+        pass
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="📍 Выбери локацию",
+            switch_inline_query_current_chat=" "
+        )]
+    ])
+    msg = await message.answer("Выберите локацию:", reply_markup=keyboard)
+    await state.update_data(last_bot_message=msg.message_id)
+    await state.set_state(LostForm.location)
+
+@dp.message(LostForm.location, lambda m: m.text.startswith("SELECTED_LOCATION:"))
+async def handle_location_selection(message: Message, state: FSMContext):
+    raw = message.text.replace("SELECTED_LOCATION:", "").strip()
+    location_name = LOCATIONS.get(raw, "Unknown")
+
+    await state.update_data(location=location_name)
     data = await state.get_data()
 
     last_msg_id = data.get('last_bot_message')
@@ -1479,7 +1542,13 @@ async def handle_edit(callback: CallbackQuery, state: FSMContext):
         await state.update_data(last_bot_message=msg.message_id)
         await state.set_state(EditingForm.category)
     elif action == "location":
-        msg = await callback.message.answer("Где было потеряно? (Отправьте `-` для пропуска)")
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text="📍 Выбери место",
+                switch_inline_query_current_chat=" "
+            )]
+        ])
+        msg = await callback.message.answer("Найди категорию:", reply_markup=keyboard)
         await state.update_data(last_bot_message=msg.message_id)
         await state.set_state(EditingForm.location)
     elif action == "comments":
@@ -1552,13 +1621,12 @@ async def update_category(message: Message, state: FSMContext):
     await show_summary(message, data, state)
 
 # updates location
-@dp.message(EditingForm.location)
+@dp.message(EditingForm.location, lambda m: m.text.startswith("SELECTED_LOCATION:"))
 async def update_location(message: Message, state: FSMContext):
-    if message.text.strip() == "-":
-        await message.answer("Пропустил изменение места.")
-    else:
-        await state.update_data(location=message.text)
-
+    raw = message.text.replace("SELECTED_LOCATION:", "").strip()
+    location_name = LOCATIONS.get(raw, "Unknown")
+    
+    await state.update_data(location=location_name)
     data = await state.get_data()
 
     last_msg_id = data.get('last_bot_message')
@@ -1612,12 +1680,12 @@ async def confirm_submission(callback: CallbackQuery, state: FSMContext):
     
     try:
         sent_msg = await bot.send_photo(
-            chat_id="@help_channel_name", 
+            chat_id="@rgwojihbftyb", 
             photo=data["photo"], 
             caption=summary_for_lost
         )
         
-        conn = sqlite3.connect("yout_databse_name.db")
+        conn = sqlite3.connect("found_items_letovo.db")
         cursor = conn.cursor()
         cursor.execute('''
             INSERT INTO found_items (message_id, category, date)
@@ -1626,7 +1694,7 @@ async def confirm_submission(callback: CallbackQuery, state: FSMContext):
         conn.commit()
         conn.close()
         
-        conn = sqlite3.connect("yout_databse_name.db")
+        conn = sqlite3.connect("found_items_letovo.db")
         cursor = conn.cursor()
         cursor.execute('''
             SELECT DISTINCT user_id FROM user_subscriptions
