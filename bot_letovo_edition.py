@@ -1673,6 +1673,7 @@ async def confirm_submission(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     category_key = next(k for k, v in CATEGORIES.items() if v == data.get("category"))
     summary_for_lost = (
+        f"Категория: {data.get('category', '-')}\n"
         f"Место: {data.get('location', '-')}\n"
         f"Комментарий: {data.get('comments', '-')}\n"
         f"Дата: {datetime.now().date()}"
