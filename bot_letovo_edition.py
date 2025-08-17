@@ -1231,6 +1231,7 @@ async def handle_filter_days(message: Message, state: FSMContext):
         return
 
     sent_messages = []
+    failed_ids = []
     
     for msg_id in message_ids:
         try:
@@ -1241,7 +1242,25 @@ async def handle_filter_days(message: Message, state: FSMContext):
             )
             sent_messages.append(sent_msg.message_id)
         except Exception as e:
+            failed_ids.append(msg_id)
             print(f"Error sending message {msg_id}: {e}")
+
+    conn = sqlite3.connect("found_items_letovo.db")
+    cursor = conn.cursor()
+    if failed_ids:
+        try:
+            placeholders = ','.join(['?'] * len(failed_ids))
+            cursor.execute(f'''
+                DELETE FROM found_items
+                WHERE message_id IN ({placeholders})
+            ''', failed_ids)
+            conn.commit()
+            print(f"Deleted {len(failed_ids)} failed messages from database")
+        except Exception as e:
+            print(f"Error deleting failed messages from database: {e}")
+            conn.rollback()
+
+    conn.close()
 
     hide_orders_button = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🗑️ Спрятать объявление", callback_data="hide_orders")]
