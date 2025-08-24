@@ -195,7 +195,7 @@ LOCATION_DESCRIPTIONS = {
 admins have more commands to use, so add their ids to list
 to get id, text @getmyid_bot and paste code after <<Your user ID:>>
 """
-ADMIN_IDS = set([123456789, 987654321])
+ADMIN_IDS = set([1793679875, 7335687469, 1667964657])
 ADMIN_EMOJI = "👮‍♂️"
 
 def is_admin(user_id):
@@ -800,9 +800,6 @@ async def cmd_sendall(message: Message, state: FSMContext):
 # proccesses sending message to all users
 @dp.message(AdminForm.broadcast)
 async def process_broadcast(message: Message, state: FSMContext):
-    if message.from_user.id not in ADMIN_IDS:
-        return
-
     conn = sqlite3.connect("found_items_letovo.db")
     cursor = conn.cursor()
     cursor.execute('SELECT user_id FROM users')
@@ -1232,14 +1229,30 @@ async def handle_filter_days(message: Message, state: FSMContext):
 
     sent_messages = []
     failed_ids = []
+
     
     for msg_id in message_ids:
         try:
-            sent_msg = await bot.forward_message(
-                chat_id=message.chat.id,
-                from_chat_id="@rgwojihbftyb",
-                message_id=msg_id
-            )
+            if not is_admin(message.from_user.id):
+                sent_msg = await bot.copy_message(
+                    chat_id=message.chat.id,
+                    from_chat_id="@rgwojihbftyb",
+                    message_id=msg_id
+                )
+            else:
+                delete_kb = InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(
+                        text="🗑️ Удалить из БД",
+                        callback_data=f"admin_delete_{msg_id}"
+                    )
+                ]])
+
+                sent_msg = await bot.copy_message(
+                    chat_id=message.chat.id,
+                    from_chat_id="@rgwojihbftyb",
+                    message_id=msg_id,
+                    reply_markup=delete_kb
+                )
             sent_messages.append(sent_msg.message_id)
         except Exception as e:
             failed_ids.append(msg_id)
@@ -1259,7 +1272,6 @@ async def handle_filter_days(message: Message, state: FSMContext):
         except Exception as e:
             print(f"Error deleting failed messages from database: {e}")
             conn.rollback()
-
     conn.close()
 
     hide_orders_button = InlineKeyboardMarkup(inline_keyboard=[
