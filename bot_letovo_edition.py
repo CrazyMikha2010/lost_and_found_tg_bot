@@ -854,12 +854,13 @@ async def process_broadcast(message: Message, state: FSMContext):
     admin_badge = f"{ADMIN_EMOJI} *Сообщение от администратора:*\n\n"
 
     if message.text:
-        full_text = admin_badge + message.text
         for user_id in users:
             try:
-                await bot.send_message(
+                await bot.copy_message(
                     chat_id=user_id,
-                    text=full_text,
+                    from_chat_id=message.chat.id,
+                    message_id=message.message_id,
+                    caption=admin_badge + message.caption if message.caption else None,
                     parse_mode=ParseMode.MARKDOWN
                 )
                 success += 1
@@ -867,16 +868,13 @@ async def process_broadcast(message: Message, state: FSMContext):
                 failed += 1
 
     elif message.photo:
-        photo_file_id = message.photo[-1].file_id
-        caption = message.caption or ""
-        full_caption = admin_badge + caption
-
         for user_id in users:
             try:
-                await bot.send_photo(
+                await bot.copy_message(
                     chat_id=user_id,
-                    photo=photo_file_id,
-                    caption=full_caption,
+                    from_chat_id=message.chat.id,
+                    message_id=message.message_id,
+                    caption=admin_badge + message.caption if message.caption else None,
                     parse_mode=ParseMode.MARKDOWN
                 )
                 success += 1
